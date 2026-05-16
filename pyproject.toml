@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vtp-eval"
+version = "0.1.0"
+description = "Visual Token Pruning Evaluation harness for LLaVA-1.5 via lmms-eval"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vtp_eval*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: integration tests that require GPU + LLaVA weights"]
