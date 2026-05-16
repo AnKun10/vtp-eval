@@ -1,6 +1,6 @@
 """lmms-eval adapter modules for visual token pruning methods.
 
 Each submodule registers a model adapter via @register_model decorator.
-Import-side-effects intentional: importing this package registers all adapters.
+Importing this package registers all adapters in lmms-eval's MODEL_REGISTRY.
 """
-# Adapters imported as we add them in subsequent tasks
+from vtp_eval.adapters import llava_baseline  # noqa: F401  (registers adapter)
