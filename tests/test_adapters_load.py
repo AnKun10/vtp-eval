@@ -10,8 +10,9 @@ pytest.importorskip("lmms_eval", reason="lmms-eval not installed locally")
 
 ADAPTERS = [
     "llava_baseline",
+    "llava_fastv",
     # Added in later tasks:
-    # "llava_fastv", "llava_sparsevlm", "llava_visionzip",
+    # "llava_sparsevlm", "llava_visionzip",
     # "llava_divprune", "llava_sparsevila",
 ]
 

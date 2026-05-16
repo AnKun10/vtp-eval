@@ -4,3 +4,4 @@ Each submodule registers a model adapter via @register_model decorator.
 Importing this package registers all adapters in lmms-eval's MODEL_REGISTRY.
 """
 from vtp_eval.adapters import llava_baseline  # noqa: F401  (registers adapter)
+from vtp_eval.adapters import llava_fastv      # noqa: F401
