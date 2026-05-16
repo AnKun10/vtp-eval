@@ -12,7 +12,7 @@ class LLaMAConfig:
     n_layers: int = 32
     d_model: int = 4096
     d_ffn: int = 11008  # SwiGLU intermediate
-    n_heads: int = 32
+    ffn_n_matrices: int = 3   # 3 for SwiGLU (gate+up+down), 2 for GELU (up+down)
 
 
 LLAVA_15_7B = LLaMAConfig()
@@ -29,7 +29,7 @@ def layer_flops(seq_len: int, cfg: LLaMAConfig = LLAVA_15_7B) -> float:
     d, m = cfg.d_model, cfg.d_ffn
     attn_proj = 4 * seq_len * d * d            # Q, K, V, O linear
     attn_mm   = 2 * seq_len * seq_len * d      # QK^T + softmax · V
-    ffn       = 3 * seq_len * d * m            # SwiGLU: gate + up + down
+    ffn       = cfg.ffn_n_matrices * seq_len * d * m  # matrix count varies by FFN type
     return float(attn_proj + attn_mm + ffn)
 
 
@@ -55,7 +55,7 @@ def shape_baseline() -> List[int]:
 
 
 def shape_fastv(K: int, R: int) -> List[int]:
-    """FastV prunes after layer K (1-indexed exclusive: layer K still sees all)."""
+    """Layers 0..K (0-indexed, inclusive) see full visual tokens; layers K+1..31 see R tokens."""
     return [VISUAL_FULL] * (K + 1) + [R] * (32 - K - 1)
 
 
@@ -94,8 +94,8 @@ def shape_sparsevila(enc_ratio: float, dec_ratio: float) -> List[int]:
 
 
 def clip_encoder_flops(visual_keep: int = 577) -> float:
-    """CLIP-ViT-L/14: 24 layers, d=1024, d_ffn=4096."""
-    cfg = LLaMAConfig(n_layers=24, d_model=1024, d_ffn=4096, n_heads=16)
+    """CLIP-ViT-L/14: 24 layers, d=1024, d_ffn=4096, GELU FFN (2 matrices)."""
+    cfg = LLaMAConfig(n_layers=24, d_model=1024, d_ffn=4096, ffn_n_matrices=2)
     return cfg.n_layers * layer_flops(visual_keep, cfg)
 
 
