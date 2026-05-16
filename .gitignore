@@ -16,3 +16,13 @@ results/*
 # Local data
 *.jsonl
 *.log
+
+# Local-only docs (Claude-generated dev artifacts)
+docs/superpowers/
+
+# Defensive: keep stray paper / spreadsheet / sibling-repo artifacts out
+*.pdf
+*.xlsx
+*.xls
+NeurIPS2025-Balanced-Token-Pruning/
+balanced-tp/
