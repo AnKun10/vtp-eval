@@ -1,0 +1,41 @@
+# Canonical pruning configs per method on POPE / LLaVA-1.5 7B.
+# Values from each method's paper / reference repo default.
+model_base: liuhaotian/llava-v1.5-7b
+
+# Args appended to every --model_args
+common_args:
+  attn_implementation: eager   # Required for FastV/SparseVLMs (need attention map)
+  dtype: float16
+
+runs:
+  - name: baseline
+    model: llava_baseline
+    model_args: {}
+
+  - name: fastv_K2_R128
+    model: llava_fastv
+    model_args:
+      fast_v_agg_layer: 2
+      fast_v_attention_rank: 128
+
+  - name: sparsevlm_192
+    model: llava_sparsevlm
+    model_args:
+      retain_token: 192
+
+  - name: visionzip_64
+    model: llava_visionzip
+    model_args:
+      dominant: 54
+      contextual: 10
+
+  - name: divprune_0.098
+    model: llava_divprune
+    model_args:
+      subset_ratio: 0.098
+
+  - name: sparsevila_0.5_0.5
+    model: llava_sparsevila
+    model_args:
+      encoder_prune_ratio: 0.5
+      decode_retrieval_ratio: 0.5
