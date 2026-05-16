@@ -5,7 +5,7 @@ Kept in the repo so the notebook is reproducible from a text source.
 import json
 from pathlib import Path
 
-REPO = "https://github.com/<GITHUB_USER>/vtp-eval.git"  # TODO: replace with actual repo URL
+REPO = "https://github.com/AnKun10/vtp-eval.git"
 
 CELLS = []
 
