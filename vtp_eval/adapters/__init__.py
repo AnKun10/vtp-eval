@@ -8,3 +8,4 @@ from vtp_eval.adapters import llava_fastv      # noqa: F401
 from vtp_eval.adapters import llava_sparsevlm  # noqa: F401
 from vtp_eval.adapters import llava_visionzip  # noqa: F401
 from vtp_eval.adapters import llava_divprune   # noqa: F401
+from vtp_eval.adapters import llava_sparsevila # noqa: F401
