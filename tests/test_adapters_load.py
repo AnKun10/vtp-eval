@@ -12,8 +12,9 @@ ADAPTERS = [
     "llava_baseline",
     "llava_fastv",
     "llava_sparsevlm",
+    "llava_visionzip",
     # Added in later tasks:
-    # "llava_visionzip", "llava_divprune", "llava_sparsevila",
+    # "llava_divprune", "llava_sparsevila",
 ]
 
 
