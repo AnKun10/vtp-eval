@@ -9,9 +9,11 @@ contract: __init__ + generate_until.
 """
 from __future__ import annotations
 
-import torch
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional
+
+import torch
 
 from lmms_eval.api.registry import register_model
 from lmms_eval.models.simple.llava import Llava  # noqa: F401 (sibling reference)
@@ -46,6 +48,7 @@ class LlavaSparseVILA(lmms):
         torch_dtype = {"float16": torch.float16,
                        "bfloat16": torch.bfloat16,
                        "float32": torch.float32}[dtype]
+        self._torch_dtype = torch_dtype
 
         cfg = SparseVILAConfig(
             encoder_prune_ratio=float(encoder_prune_ratio),
@@ -93,7 +96,6 @@ class LlavaSparseVILA(lmms):
         from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
         from llava.mm_utils import tokenizer_image_token, process_images
 
-        from contextlib import nullcontext
         results = []
         ctx_mgr = (self.timing_hook.measure()
                    if self.timing_hook is not None else nullcontext())
@@ -103,7 +105,7 @@ class LlavaSparseVILA(lmms):
                 images = doc_to_visual(self.task_dict[task][split][doc_id])
                 image_tensor = process_images(
                     images, self._image_processor, self._model.config,
-                )[0].unsqueeze(0).to(self._device, dtype=torch.float16)
+                )[0].unsqueeze(0).to(self._device, dtype=self._torch_dtype)
 
                 # Build LLaVA-1.5 conv prompt
                 conv = conv_templates["llava_v1"].copy()
