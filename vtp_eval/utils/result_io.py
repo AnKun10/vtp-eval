@@ -101,19 +101,15 @@ def aggregate(results_dir: Path, output_csv: Path) -> pd.DataFrame:
         df.to_csv(output_csv, index=False)
         return df
     df = pd.DataFrame(rows)
-    if "_method_key" not in df.columns:
+    baseline = df[df["_method_key"] == "baseline"]
+    if not baseline.empty:
+        base_tf = float(baseline["tflops_prefill"].iloc[0])
+        df = df.copy()
+        df["tflops_reduction_pct"] = (1 - df["tflops_prefill"] / base_tf) * 100
+    else:
         df = df.copy()
         df["tflops_reduction_pct"] = float("nan")
-    else:
-        baseline = df[df["_method_key"] == "baseline"]
-        if not baseline.empty:
-            base_tf = float(baseline["tflops_prefill"].iloc[0])
-            df = df.copy()
-            df["tflops_reduction_pct"] = (1 - df["tflops_prefill"] / base_tf) * 100
-        else:
-            df = df.copy()
-            df["tflops_reduction_pct"] = float("nan")
-        df = df.drop(columns=["_method_key"])
+    df = df.drop(columns=["_method_key"])
     output_csv = Path(output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_csv, index=False)
