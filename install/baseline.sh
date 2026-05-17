@@ -3,6 +3,11 @@
 set -euo pipefail
 bash install/_common.sh
 
+# Drop any prior method's editable `llava` finder before installing ours.
+# Without this, switching methods within one kernel keeps importing the stale
+# fork (pip's editable finder caches the first one resolved).
+pip uninstall -y llava || true
+
 if [ ! -d /content/LLaVA ]; then
   git clone --depth 1 https://github.com/haotian-liu/LLaVA.git /content/LLaVA
 fi
@@ -20,4 +25,4 @@ pip install -e /content/vtp-eval --no-deps
 # lmms-eval install may bump transformers/tokenizers/huggingface-hub to versions
 # that break LLaVA 1.5. Force-pin to the verified-working set.
 pip install -q --force-reinstall --no-deps \
-    transformers==4.37.2 tokenizers==0.15.1 huggingface_hub==1.11.0
+    transformers==4.37.2 tokenizers==0.15.1 huggingface_hub==0.24.7

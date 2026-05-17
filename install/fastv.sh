@@ -14,6 +14,9 @@
 set -euo pipefail
 bash install/_common.sh
 
+# Drop any prior method's editable `llava` finder.
+pip uninstall -y llava || true
+
 if [ ! -d /content/FastV ]; then
   git clone --depth 1 https://github.com/pkunlp-icler/FastV.git /content/FastV
 fi
@@ -43,4 +46,4 @@ pip install -e /content/vtp-eval --no-deps
 # Do NOT force-reinstall transformers here — we want FastV's bundled fork
 # to stay in place. tokenizers/huggingface_hub still pinned for LLaVA 1.5.
 pip install -q --force-reinstall --no-deps \
-    tokenizers==0.15.1 huggingface_hub==1.11.0
+    tokenizers==0.15.1 huggingface_hub==0.24.7

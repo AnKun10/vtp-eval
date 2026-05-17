@@ -3,6 +3,9 @@
 set -euo pipefail
 bash install/_common.sh
 
+# Drop any prior method's editable `llava` finder.
+pip uninstall -y llava || true
+
 if [ ! -d /content/SparseVILA ]; then
   git clone --depth 1 https://github.com/AnKun10/sparsevila-implementation.git /content/SparseVILA
 fi
@@ -22,4 +25,4 @@ pip install -e /content/vtp-eval --no-deps
 
 # Force-pin to the verified-working transformers stack
 pip install -q --force-reinstall --no-deps \
-    transformers==4.37.2 tokenizers==0.15.1 huggingface_hub==1.11.0
+    transformers==4.37.2 tokenizers==0.15.1 huggingface_hub==0.24.7
