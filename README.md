@@ -2,15 +2,16 @@
 
 Visual Token Pruning evaluation harness for LLaVA-1.5 7B on POPE, via [lmms-eval](https://github.com/EvolvingLMMs-Lab/lmms-eval).
 
-Compares **6 configs**:
-| Run | Method | Canonical config |
-|---|---|---|
-| `baseline` | none | full 576 visual tokens |
-| `fastv_K2_R128` | FastV | prune after layer 2, keep 128 |
-| `sparsevlm_192` | SparseVLMs | retain=192 multi-layer schedule |
-| `visionzip_64` | VisionZip | dominant=54 + contextual=10 |
-| `divprune_0.098` | DivPrune | subset ratio 9.8% |
-| `sparsevila_0.5_0.5` | SparseVILA | encoder prune 0.5, decode retrieve 0.5 |
+Compares **5 default configs** (FastV is documented but blocked on Colab Python 3.12 — see [`docs/COLAB_FIXES.md`](docs/COLAB_FIXES.md#18) #18):
+
+| Run | Method | Canonical config | Colab status |
+|---|---|---|---|
+| `baseline` | none | full 576 visual tokens | ✅ |
+| `sparsevlm_192` | SparseVLMs | retain=192 multi-layer schedule | ✅ (batch=1) |
+| `visionzip_64` | VisionZip | dominant=54 + contextual=10 | ✅ |
+| `divprune_0.098` | DivPrune | subset ratio 9.8% | ✅ |
+| `sparsevila_0.5_0.5` | SparseVILA | encoder prune 0.5, decode retrieve 0.5 | ✅ |
+| `fastv_K2_R128` | FastV | prune after layer 2, keep 128 | ❌ blocked (Py 3.12) |
 
 ## Setup
 

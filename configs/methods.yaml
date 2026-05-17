@@ -14,6 +14,9 @@ runs:
     model: llava_baseline
     model_args: {}
 
+  # FastV is BLOCKED on Colab Python 3.12 — keep the entry for documentation
+  # but the notebook generator excludes it from the default RUNS list.
+  # See docs/COLAB_FIXES.md root cause #18.
   - name: fastv_K2_R128
     model: llava_fastv
     model_args:

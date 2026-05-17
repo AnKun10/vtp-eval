@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 # FastV install — token pruning AFTER layer K based on attention rank.
 #
-# IMPORTANT — FastV requires its bundled transformers fork.
-# The single-file modeling_llama.py patch (via _patch_fastv.py) failed
-# in smoke-testing: FastV's patched code expects an older attention-output
-# API that is not compatible with stock transformers 4.37.2 eager attention.
-# (See docs/COLAB_FIXES.md root cause #11.)
+# ⚠️ STATUS: BLOCKED on Colab Python 3.12 (as of 2026-05-17).
+# FastV's bundled transformers fork is pinned to 4.31.0, whose
+# dependency_versions_check requires tokenizers >=0.11.1, !=0.11.3, <0.14.
+# No pre-built wheel of tokenizers <0.14 exists for Python 3.12, and source
+# build fails on Colab. Stock transformers 4.37.2 doesn't work either: FastV's
+# modeling_llama.py patch assumes the older eager-attention output is a
+# tensor, but it's a tuple in 4.37.2 — the patch can't be ported cleanly.
 #
-# Solution: install FastV's bundled transformers fork at
+# This script is kept for documentation; it will fail on Colab today.
+# To run FastV you'd need a Python 3.10 kernel or a maintained FastV branch.
+# See docs/COLAB_FIXES.md root cause #18.
+#
+# Plan-of-record: install FastV's bundled transformers fork at
 # /content/FastV/src/transformers/ AS the transformers package. This is
 # isolating: FastV must be in its own kernel restart (the notebook already
 # enforces this between methods).

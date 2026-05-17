@@ -17,9 +17,12 @@ def code(text): CELLS.append({"cell_type": "code", "metadata": {},
 
 md(f"""\
 # vtp-eval — POPE benchmark on LLaVA-1.5 7B
-Compares baseline + 5 visual-token-pruning methods (FastV, SparseVLMs, VisionZip, DivPrune, SparseVILA).
-**Runtime:** Colab Pro, GPU L4 (24 GB). **Total time:** ~3–4 hours for full POPE.
+Compares baseline + 4 visual-token-pruning methods (SparseVLMs, VisionZip, DivPrune, SparseVILA).
+**Runtime:** Colab Pro, GPU L4 (24 GB). **Total time:** ~2–3 hours for full POPE.
 **IMPORTANT:** You MUST manually restart the runtime between methods (marked in red below).
+
+> _Note: FastV is excluded from the default runs — its bundled transformers fork (4.31.0)
+> needs tokenizers <0.14, which has no Python 3.12 wheels. See `docs/COLAB_FIXES.md` #18._
 """)
 
 code(f"""\
@@ -43,10 +46,13 @@ from huggingface_hub import notebook_login
 notebook_login()
 """)
 
-# 6 run blocks
+# Default run blocks for Colab Pro / L4 (Python 3.12).
+# FastV is omitted: its bundled transformers fork (4.31.0) needs tokenizers
+# <0.14, which has no Python 3.12 wheels. Stock transformers 4.37.2's eager
+# attention output is a tuple, breaking FastV's single-file modeling_llama
+# patch. See docs/COLAB_FIXES.md root cause #18.
 RUNS = [
     ("baseline",           "install/baseline.sh",  "baseline"),
-    ("fastv_K2_R128",      "install/fastv.sh",     "FastV (K=2, R=128)"),
     ("sparsevlm_192",      "install/sparsevlm.sh", "SparseVLMs (retain=192)"),
     ("visionzip_64",       "install/visionzip.sh", "VisionZip (64 tokens)"),
     ("divprune_0.098",     "install/divprune.sh",  "DivPrune (ratio=0.098)"),
