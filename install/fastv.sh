@@ -23,6 +23,13 @@ bash install/_common.sh
 # Drop any prior method's editable `llava` finder.
 pip uninstall -y llava || true
 
+# If torch isn't on path (e.g. fresh conda Python 3.10 env after condacolab
+# restart in notebooks/fastv_eval.ipynb), install it. CUDA-12.x build is
+# resolved by pip from PyPI's default index.
+if ! python -c "import torch" 2>/dev/null; then
+  pip install -q torch torchvision
+fi
+
 if [ ! -d /content/FastV ]; then
   git clone --depth 1 https://github.com/pkunlp-icler/FastV.git /content/FastV
 fi
@@ -50,6 +57,9 @@ pip install -e /content/lmms-eval --no-deps
 pip install -e /content/vtp-eval --no-deps
 
 # Do NOT force-reinstall transformers here — we want FastV's bundled fork
-# to stay in place. tokenizers/huggingface_hub still pinned for LLaVA 1.5.
+# (4.31.0) to stay in place. That fork's dependency_versions_check requires
+# `tokenizers >=0.11.1, !=0.11.3, <0.14`, so we pin tokenizers to 0.13.3
+# (the latest <0.14 with prebuilt wheels). Python 3.10 is required for that
+# wheel to be available — see notebooks/fastv_eval.ipynb for the setup.
 pip install -q --force-reinstall --no-deps \
-    tokenizers==0.15.1 huggingface_hub==0.24.7
+    tokenizers==0.13.3 huggingface_hub==0.24.7

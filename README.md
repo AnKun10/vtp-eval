@@ -17,10 +17,14 @@ Compares **5 default configs** (FastV is documented but blocked on Colab Python 
 
 This package is meant to run on **Colab Pro (L4 GPU, 24 GB)**. Each pruning method patches `transformers`/`llava` in incompatible ways, so the notebook restarts the kernel between methods.
 
-### Run on Colab
+### Run on Colab — main 5-method eval
 1. Open `notebooks/pope_eval.ipynb` in Colab Pro.
 2. Set runtime → L4 GPU.
 3. Run cells sequentially. Restart runtime when prompted (markdown cells flag the spot).
+
+### Run on Colab — FastV (separate notebook, Python 3.10)
+FastV is blocked under Colab's default Python 3.12 (see [`docs/COLAB_FIXES.md` #18](docs/COLAB_FIXES.md)).
+Use `notebooks/fastv_eval.ipynb`, which switches the kernel to Python 3.10 via `condacolab` before installing FastV. Experimental — expect a one-time auto-restart after the conda install cell.
 
 ### Run locally (single method, A100 / RTX 4090)
 ```bash
