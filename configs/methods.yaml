@@ -23,6 +23,10 @@ runs:
 
   - name: sparsevlm_192
     model: llava_sparsevlm
+    # SparseVLMs' custom SDPA path at utils.py:109 does `attn_bias += attn_mask`
+    # with mismatched ranks ([seq,seq] += [B,1,seq,seq]); fails for B>1.
+    # Override the default VTP_BATCH_SIZE for this run only.
+    batch_size: 1
     model_args:
       retain_token: 192
       attn_implementation: sdpa    # SparseVLMs asserts sdpa at modelling_sparse_llama.py:727
