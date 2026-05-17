@@ -289,6 +289,47 @@ the `+=`, or document the per-method batch-size constraint and add a
 `batch_size: 1` per-run override knob to `configs/methods.yaml` +
 `scripts/run_one.sh`.
 
+### 19. `install/visionzip.sh` skips `pip install -e /content/LLaVA` when the dir exists
+After fix #16 added `pip uninstall -y llava || true` at the top of every
+install script, `visionzip.sh` no longer reinstalls the LLaVA fork because
+its existing branch is:
+
+```bash
+if [ -d /content/VisionZip/LLaVA ]; then
+  pip install -e /content/VisionZip/LLaVA --no-deps
+elif [ ! -d /content/LLaVA ]; then
+  git clone … /content/LLaVA
+  pip install -e /content/LLaVA --no-deps
+fi
+```
+
+VisionZip does not bundle a `LLaVA/` directory (verified upstream). When a
+previous method (baseline / divprune) left `/content/LLaVA` on disk, the
+`elif [ ! -d /content/LLaVA ]` is false and the script installs nothing. But
+`pip uninstall -y llava` at the start already removed the editable install
+record, so `import llava` fails inside the subprocess — silently swallowed by
+lmms-eval's try/except, then surfaces as `NameError: get_model_name_from_path
+is not defined`.
+
+**Fix:** decouple "clone if missing" from "pip install":
+
+```bash
+pip uninstall -y llava || true
+
+if [ -d /content/VisionZip/LLaVA ]; then
+  LLAVA_DIR=/content/VisionZip/LLaVA
+else
+  [ -d /content/LLaVA ] || git clone --depth 1 https://github.com/haotian-liu/LLaVA.git /content/LLaVA
+  LLAVA_DIR=/content/LLaVA
+fi
+sed -i 's/"torch==2.1.2"/"torch"/g; s/"torchvision==0.16.2"/"torchvision"/g; s/"deepspeed==0.12.6"/"deepspeed"/g' $LLAVA_DIR/pyproject.toml || true
+pip install -e $LLAVA_DIR --no-deps
+```
+
+(General lesson: whenever you add `pip uninstall <pkg>` to a script,
+audit every conditional install of `<pkg>` further down — guards based on
+"directory exists" no longer imply "package is installed".)
+
 ### 18. FastV's bundled transformers (4.31.0) is incompatible with Python 3.12
 The new `install/fastv.sh` installs `/content/FastV/src/transformers`
 (transformers 4.31.0). That version's `dependency_versions_check` requires
