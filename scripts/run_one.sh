@@ -39,8 +39,11 @@ LIMIT_ARG=""
 [ -n "$LIMIT" ] && LIMIT_ARG="--limit $LIMIT"
 
 echo "[run] $RUN_NAME — $MODEL($MODEL_ARGS) on $TASK"
-python -m lmms_eval \
-  --include_path "$PWD/vtp_eval/adapters" \
+# Use vtp_eval.run_lmms wrapper instead of `python -m lmms_eval` directly:
+# the wrapper imports vtp_eval.adapters first, which mutates lmms-eval's
+# AVAILABLE_SIMPLE_MODELS so our adapter names resolve. (--include_path alone
+# is insufficient; lmms-eval doesn't auto-import packages from that path.)
+python -m vtp_eval.run_lmms \
   --model "$MODEL" \
   --model_args "$MODEL_ARGS" \
   --tasks "$TASK" \
