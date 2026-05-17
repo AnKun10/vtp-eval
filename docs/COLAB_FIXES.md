@@ -1,8 +1,12 @@
 # Colab POPE smoke-test fixes (2026-05-17)
 
 Smoke-tested `notebooks/pope_eval.ipynb` on Colab Pro **L4 (23 GB)** with
-Python 3.12, CUDA 12.8, torch 2.10 (default Colab kernel). 4/6 methods pass
-on 10 POPE samples; 2 are blocked on deep transformers-API drift.
+Python 3.12, CUDA 12.8, torch 2.10 (default Colab kernel).
+
+**Re-test on fresh clone after first round of repo fixes: 5/6 methods pass.**
+FastV remains blocked on a deeper Python 3.12 incompatibility. Four small
+issues still need to land in the repo (see "Remaining issues after first
+fix pass" below).
 
 | Method               | Status     | POPE F1 (n=10) | Blocker                                                |
 |----------------------|------------|----------------|--------------------------------------------------------|
@@ -199,6 +203,111 @@ vtp_eval/adapters/__init__.py            mutate lmms_eval.models.AVAILABLE_SIMPL
 vtp_eval/run_lmms.py        [NEW]        CLI wrapper that imports adapters first
 ```
 
+## Remaining issues after first fix pass (2026-05-17 re-test)
+
+Re-tested with a fresh `git clone` of the post-fix repo:
+
+| Method               | Re-test status                                     |
+|----------------------|----------------------------------------------------|
+| baseline             | ✅ PASS (F1=0.67)                                  |
+| fastv_K2_R128        | ❌ BLOCKED (Python 3.12 ↔ FastV bundled fork wall) |
+| sparsevlm_192        | ✅ PASS w/ batch=1 (F1=0.80)                       |
+| visionzip_64         | ✅ PASS w/ extra `pip uninstall llava` (F1=0.80)   |
+| divprune_0.098       | ✅ PASS (F1=0.91)                                  |
+| sparsevila_0.5_0.5   | ✅ PASS w/ extra `pip install third_party/LLaVA` (F1=0.80) |
+
+### 14. `huggingface_hub==1.11.0` pin breaks transformers 4.37.2 (and 4.31.0)
+Both transformers versions assert `huggingface-hub>=0.19.3,<1.0`. With
+`huggingface_hub==1.11.0` on disk, `import transformers` raises
+`ImportError: huggingface-hub>=0.19.3,<1.0 is required …` at fresh-kernel
+import.
+
+**Why the first smoke pass didn't catch this — and why the note in this
+file said 1.11.0:** The first session's "force-reinstall" command actually
+installed `huggingface_hub==0.24.7` on disk, but the verification cell
+re-read `huggingface_hub.__version__` from a previously imported (cached)
+copy — `notebook_login()` had already imported hub 1.11.0 into
+`sys.modules` before the reinstall. The cached attribute showed 1.11.0
+while the on-disk version was 0.24.7. The smoke run worked because the
+bash subprocess spawned by `run_one.sh` does fresh imports from disk and
+read 0.24.7. The 1.11.0 number was copied into this file from the cached
+attribute, then into the install scripts — locking the broken version in.
+
+Lesson: when noting verified versions, cross-check with `pip show <pkg>`
+or `python -c 'import importlib.metadata; print(importlib.metadata.version("<pkg>"))'`
+from a fresh subprocess, not `mod.__version__` of an already-imported module.
+
+**Fix:** replace `huggingface_hub==1.11.0` with `huggingface_hub==0.24.7`
+(or any `0.24.x`) in `install/baseline.sh`, `install/sparsevlm.sh`,
+`install/visionzip.sh`, `install/divprune.sh`, `install/sparsevila.sh`,
+and `install/fastv.sh`.
+
+### 15. `install/sparsevila.sh` never installs the bundled LLaVA submodule
+`sparsevila.sh` clones the submodule (`third_party/LLaVA` via
+`git submodule update --init --recursive`) but never `pip install -e`s it.
+At runtime SparseVILA's loader does `from llava.model.builder import
+load_pretrained_model` → `ModuleNotFoundError: No module named 'llava'`.
+
+**Fix:** add to `install/sparsevila.sh`, after the submodule update:
+
+```bash
+LLAVA_DIR=/content/SparseVILA/third_party/LLaVA
+sed -i 's/"torch==2.1.2"/"torch"/g;
+        s/"torchvision==0.16.2"/"torchvision"/g;
+        s/"deepspeed==0.12.6"/"deepspeed"/g' $LLAVA_DIR/pyproject.toml
+pip install -e $LLAVA_DIR --no-deps
+```
+
+### 16. Per-method install scripts don't `pip uninstall -y llava` first
+Each method's editable `pip install -e <fork>/LLaVA` registers the package
+name `llava` to a different on-disk path. The previous method's editable
+finder stays in `dist-packages/__editable___llava_<ver>_finder.py` and wins
+import resolution when there are multiple. `pip show llava` reports the
+newest install while `import llava` resolves to the older one.
+
+Symptom: VisionZip smoke crashed inside `SparseVLMs/llava/model/...` even
+though VisionZip uses haotian-liu LLaVA.
+
+**Fix:** start every per-method install script with
+
+```bash
+pip uninstall -y llava
+```
+
+so the prior finder is removed before installing the current fork.
+
+### 17. SparseVLMs requires `VTP_BATCH_SIZE=1`
+SparseVLMs' custom SDPA path (`SparseVLMs/llava/model/language_model/utils.py:109`)
+does `attn_bias += attn_mask` where `attn_bias` is `[seq, seq]` and
+`attn_mask` is `[batch, 1, seq, seq]`. With `batch=2` this raises
+`RuntimeError: output with shape [seq, seq] doesn't match the broadcast
+shape [2, 1, seq, seq]`. Setting `batch=1` avoids it (the broadcast collapses
+to a no-op).
+
+**Fix:** either patch SparseVLMs' `utils.py` to broadcast `attn_bias` before
+the `+=`, or document the per-method batch-size constraint and add a
+`batch_size: 1` per-run override knob to `configs/methods.yaml` +
+`scripts/run_one.sh`.
+
+### 18. FastV's bundled transformers (4.31.0) is incompatible with Python 3.12
+The new `install/fastv.sh` installs `/content/FastV/src/transformers`
+(transformers 4.31.0). That version's `dependency_versions_check` requires
+`tokenizers>=0.11.1,!=0.11.3,<0.14`. The only tokenizers releases <0.14
+predate Python 3.12 — there are no pre-built wheels, and source build fails
+on Colab (`error: Failed building wheel for tokenizers`).
+
+There is no clean path forward with Python 3.12:
+- Pin Colab kernel to Python 3.10 → not user-controllable on Colab
+- Stay with stock transformers 4.37.2 and re-patch FastV's `modeling_llama.py`
+  → still hits the earlier tuple/tensor mismatch at L777 because FastV's patch
+  assumes the older eager-attention output shape
+- Maintain a Python-3.12-compatible FastV patch series (port their token-prune
+  logic onto transformers 4.37.2's attention API) → out of scope for vtp-eval
+
+**Recommendation:** drop FastV from the default `pope_eval.ipynb` runs and
+keep it as a documented-blocked entry until Colab moves off Python 3.12 or
+FastV ships a maintained branch.
+
 ## Verified working stack versions (Colab L4, 2026-05-17)
 
 ```
@@ -206,7 +315,7 @@ python                 3.12
 torch                  2.10.0+cu128
 transformers           4.37.2     (force-reinstalled after lmms-eval pulls 5.x)
 tokenizers             0.15.1
-huggingface_hub        1.11.0     (compat — transformers 4.37 doesn't break)
+huggingface_hub        0.24.7     (must be <1.0; 1.11.0 fails dependency_versions_check on fresh kernel)
 protobuf               5.29.6
 lmms-eval              v0.5 tag
 sqlitedict             installed by us
