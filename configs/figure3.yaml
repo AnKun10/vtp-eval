@@ -1,0 +1,15 @@
+# Defaults for Figure 3 of LearnPruner (ICLR 2026) reproduction.
+# Override any value via CLI flags to `python -m vtp_eval.figure3`.
+
+model_id: llava-hf/llava-1.5-7b-hf
+
+# Three depths visualized: shallow, middle, deep. LLaVA-1.5 has 32 LLM layers.
+# Middle = 12 matches the layer LearnPruner prunes at (Section 3.3).
+layers: [2, 12, 30]
+
+# COCO candidate filter. We want images with enough distinct objects that
+# semantically-targeted attention is visually distinguishable, but not so many
+# that the scene is cluttered and the heatmap is hard to read.
+min_cats: 3
+max_cats: 6
+num_candidates: 8
