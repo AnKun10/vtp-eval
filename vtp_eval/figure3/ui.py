@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Optional
 
 import gradio as gr
 import yaml
@@ -80,13 +79,13 @@ def _on_select(evt: gr.SelectData):
 
 def _on_words_change(words, idx):
     """Words toggled. Auto-fill query; enable Run iff image + >=1 word."""
+    can_run = bool(words) and idx is not None
     if not words:
         return "", gr.update(interactive=False)
-    enabled = idx is not None
-    return build_default_query(words), gr.update(interactive=enabled)
+    return build_default_query(words), gr.update(interactive=can_run)
 
 
-def _on_run(idx, words, query, ly_shallow, ly_middle, ly_deep, out_dir):
+def _on_run(idx, words, query, ly_shallow, ly_middle, ly_deep, out_dir, model_id):
     """Full Figure 3 reproduction. Generator yields incremental status."""
     global _MODEL, _PROC
     if idx is None:
@@ -101,7 +100,7 @@ def _on_run(idx, words, query, ly_shallow, ly_middle, ly_deep, out_dir):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     try:
-        # Lazy imports keep `--list-samples`-style operations lightweight
+        # Deferred to avoid loading torch/transformers on UI startup
         from .attention import extract_attention, load_llava
         from .metrics import compute_metrics
         from .visualize import plot_heatmap_grid, plot_metrics_bar
@@ -109,7 +108,7 @@ def _on_run(idx, words, query, ly_shallow, ly_middle, ly_deep, out_dir):
         if _MODEL is None:
             yield ("Loading LLaVA-1.5-7B (one-time, ~5 min on first run)...",
                    None, None, None)
-            _MODEL, _PROC = load_llava("llava-hf/llava-1.5-7b-hf")
+            _MODEL, _PROC = load_llava(model_id)
 
         chosen = _CANDS[int(idx)]
         image = Image.open(
@@ -143,10 +142,11 @@ def _on_run(idx, words, query, ly_shallow, ly_middle, ly_deep, out_dir):
 
 
 def _build_ui(cfg: dict):
-    nmin   = cfg.get("min_cats", 3)
-    nmax   = cfg.get("max_cats", 6)
-    ncand  = cfg.get("num_candidates", 25)
-    layers = cfg.get("layers", [2, 12, 30])
+    nmin     = cfg.get("min_cats", 3)
+    nmax     = cfg.get("max_cats", 6)
+    ncand    = cfg.get("num_candidates", 25)
+    layers   = cfg.get("layers", [2, 12, 30])
+    model_id = cfg.get("model_id", "llava-hf/llava-1.5-7b-hf")
 
     with gr.Blocks(title="Figure 3 - LearnPruner") as demo:
         gr.Markdown(
@@ -175,7 +175,8 @@ def _build_ui(cfg: dict):
             out_heatmap = gr.Image(label="figure3_reproduction.png", type="filepath")
             out_bar     = gr.Image(label="figure3_metrics.png",      type="filepath")
         out_df = gr.Dataframe(label="figure3_metrics.csv", interactive=False)
-        out_dir_state = gr.State(value=str(DEFAULT_OUT_DIR))
+        out_dir_state   = gr.State(value=str(DEFAULT_OUT_DIR))
+        model_id_state  = gr.State(value=model_id)
 
         load_btn.click(_load_candidates, [min_in, max_in, n_in],
                        [gallery, status])
@@ -185,13 +186,13 @@ def _build_ui(cfg: dict):
                      [query_tb, run_btn])
         run_btn.click(_on_run,
                       [idx_state, words, query_tb, shallow, middle, deep,
-                       out_dir_state],
+                       out_dir_state, model_id_state],
                       [status, out_heatmap, out_bar, out_df])
     return demo
 
 
 def launch(host: str = "0.0.0.0", port: int = 7860,
-           config: Optional[Path] = None) -> None:
+           config: Path | None = None) -> None:
     cfg = _load_config(Path(config) if config else DEFAULT_CONFIG)
     demo = _build_ui(cfg)
     demo.launch(server_name=host, server_port=port, share=False)
