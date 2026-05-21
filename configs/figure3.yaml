@@ -12,4 +12,4 @@ layers: [2, 12, 30]
 # that the scene is cluttered and the heatmap is hard to read.
 min_cats: 3
 max_cats: 6
-num_candidates: 8
+num_candidates: 25
