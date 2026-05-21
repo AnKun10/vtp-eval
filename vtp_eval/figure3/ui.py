@@ -195,7 +195,11 @@ def launch(host: str = "0.0.0.0", port: int = 7860,
            config: Path | None = None) -> None:
     cfg = _load_config(Path(config) if config else DEFAULT_CONFIG)
     demo = _build_ui(cfg)
-    demo.launch(server_name=host, server_port=port, share=False)
+    # Gradio 5+ refuses to serve files outside cwd / /tmp unless explicitly
+    # allowed. Candidate images and outputs live under DEFAULT_ROOT
+    # (/workspace on Vast, ./ locally) — whitelist that whole tree.
+    demo.launch(server_name=host, server_port=port, share=False,
+                allowed_paths=[str(DEFAULT_ROOT)])
 
 
 def main():
