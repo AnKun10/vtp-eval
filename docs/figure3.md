@@ -73,7 +73,7 @@ notebooks/figure3_reproduction.ipynb  # interactive Jupyter version
 5. Paste the entire content of `scripts/figure3_vast_onstart.sh` into the On-start Script box.
 6. **RENT**. Wait ~30 s for onstart, then SSH in.
 
-Inside SSH:
+Inside SSH, choose between the CLI workflow below or the interactive Gradio UI — see [`scripts/README.md` → "Interactive UI workflow"](../scripts/README.md#-interactive-ui-workflow) for the UI path.
 
 ```bash
 # Optional: confirm onstart finished cleanly
