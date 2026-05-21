@@ -3,6 +3,7 @@
 | Script | Purpose |
 |--------|---------|
 | `figure3_vast_onstart.sh` | On-start for Vast.ai instances. Clones repo + installs Figure 3 deps. |
+| `figure3_ui.sh` | Launch the Gradio web UI for picking image + words interactively. |
 | `figure3_list_samples.sh` | Surface candidate COCO images + their full annotation labels. |
 | `figure3_run.sh` | Run the Figure 3 reproduction on a chosen candidate. |
 | `run_one.sh` | Run **one** pruning method on **one** benchmark (e.g. POPE). |
@@ -150,6 +151,57 @@ scp -P <PORT> root@<HOST>:/workspace/figure3_outputs.tgz .
 ### 7. Destroy the instance
 
 Vast > Instances > the instance > **Destroy**. The model cache lives on the instance volume, so destroying it means the next rent re-downloads LLaVA (~5 min). For repeated experiments, **Stop** instead — the volume is preserved and re-running on-start is a no-op.
+
+---
+
+## 🖥️ Interactive UI workflow
+
+Same pipeline as the CLI, but with a single-page Gradio web UI for picking the image and target words by clicking instead of copy-pasting indices and words across shells.
+
+### 1. Open an SSH local-forward tunnel
+
+From your laptop (not inside the instance):
+
+```bash
+ssh -p <VAST_SSH_PORT> -L 7860:localhost:7860 root@<VAST_HOST>
+```
+
+The `-L 7860:localhost:7860` flag forwards `localhost:7860` on your laptop to `localhost:7860` on the Vast instance. The Gradio server binds `0.0.0.0` inside the instance but isn't exposed publicly — the SSH tunnel is the only access path.
+
+### 2. Launch the UI on the instance
+
+Inside the SSH session:
+
+```bash
+cd /workspace/vtp-eval
+bash scripts/figure3_ui.sh
+```
+
+Gradio prints `Running on local URL: http://0.0.0.0:7860`. Leave the script running.
+
+### 3. Use the UI
+
+Open `http://localhost:7860` in your laptop's browser. Then:
+
+1. Click **Load candidates** — 25 COCO thumbnails appear with annotation labels as captions.
+2. Click a thumbnail — the *Selected* line updates and the target-words checkboxes populate from that image's full category list.
+3. Tick 1–3 word checkboxes — the query box auto-fills (you can edit it). The Run button enables.
+4. Click **Run Figure 3** — status messages stream as LLaVA loads (one-time, ~5 min) and the forward pass runs (~10 s).
+5. Outputs render inline AND save to `/workspace/outputs/`:
+   - `figure3_reproduction.png` — the heatmap grid
+   - `figure3_metrics.png` — the entropy / top-5% bar chart
+   - `figure3_metrics.csv` — the underlying metrics table
+
+The model stays loaded between runs, so repeat experiments (different image or different words) finish in ~10 s.
+
+### Troubleshooting (UI)
+
+| Symptom | Fix |
+|---------|-----|
+| `OSError: [Errno 98] Address already in use` | A previous Gradio session is still bound. `pkill -f "vtp_eval.figure3.ui"`, then re-launch. |
+| Browser shows "connection refused" at `localhost:7860` | The SSH tunnel dropped or the UI isn't running. Check `bash scripts/figure3_ui.sh` is still printing in the SSH session, and that your local `ssh -L 7860:...` is alive. |
+| UI loads but Run button stays grey | You picked an image but no words yet (or vice versa). Tick at least one checkbox. |
+| Status reads "Words not found as contiguous tokens" | You edited the query and removed one of the words. Either add it back or untick the missing word. |
 
 ---
 
