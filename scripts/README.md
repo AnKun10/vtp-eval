@@ -83,7 +83,7 @@ idx id        size          categories (area-ranked)
 ====================================================================================
 ```
 
-and saves `outputs/coco_candidates.png` (8-tile thumbnail grid you can open in the Vast file browser).
+and saves `outputs/coco_candidates.png` (thumbnail grid you can open in the Vast file browser).
 
 **Read the printed categories**, decide which image you want, and pick 1–3 category names to track as target words.
 

@@ -79,7 +79,7 @@ Inside SSH, choose between the CLI workflow below or the interactive Gradio UI â
 # Optional: confirm onstart finished cleanly
 tail -n 20 /workspace/onstart.log
 
-# 1. Surface 8 candidate images with their COCO category labels
+# 1. Surface candidate images with their COCO category labels
 bash scripts/figure3_list_samples.sh
 # (or: python -m vtp_eval.figure3 --list-samples)
 # Writes:  /workspace/outputs/coco_candidates.png  +  candidates.json
@@ -111,7 +111,7 @@ Under `/workspace/outputs/` (or `./outputs/` locally):
 
 | File | Description |
 |------|-------------|
-| `coco_candidates.png` | 8-tile thumbnail grid with annotation labels |
+| `coco_candidates.png` | thumbnail grid with annotation labels |
 | `candidates.json` | machine-readable candidate list |
 | `chosen_image.jpg` | the image the run actually used |
 | `figure3_reproduction.png` | **the Figure 3 reproduction** â€” heatmap grid |
