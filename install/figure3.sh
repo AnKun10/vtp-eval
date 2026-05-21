@@ -13,7 +13,8 @@ pip install --no-cache-dir \
     "matplotlib>=3.8" \
     "pandas>=2.0" \
     "pyyaml" \
-    "jupyterlab>=4"
+    "jupyterlab>=4" \
+    "gradio>=4.0,<5"
 
 # Install vtp-eval as editable so `python -m vtp_eval.figure3` resolves.
 # --no-deps because the install above already pinned the heavy ones; we don't
