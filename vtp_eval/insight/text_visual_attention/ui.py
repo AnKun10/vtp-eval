@@ -1,8 +1,8 @@
-"""Gradio interactive UI for Figure 3 reproduction.
+"""Gradio interactive UI for text-visual attention reproduction.
 
 Run:
-    python -m vtp_eval.figure3.ui              # binds 0.0.0.0:7860
-    python -m vtp_eval.figure3.ui --port 8000
+    python -m vtp_eval.insight.text_visual_attention.ui              # binds 0.0.0.0:7860
+    python -m vtp_eval.insight.text_visual_attention.ui --port 8000
 
 Access from a laptop via SSH tunnel:
     ssh -p <VAST_PORT> -L 7860:localhost:7860 root@<HOST>
@@ -22,8 +22,8 @@ from .coco import (DEFAULT_ANN_DIR, DEFAULT_ROOT,
                    download_candidate_image, ensure_coco_ann, pick_candidates)
 from .tokens import build_default_query
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = REPO_ROOT / "configs/figure3.yaml"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_CONFIG = REPO_ROOT / "configs/text_visual_attention.yaml"
 DEFAULT_OUT_DIR = (DEFAULT_ROOT / "outputs") if DEFAULT_ROOT.name == "workspace" \
     else (Path.cwd() / "outputs")
 
@@ -121,13 +121,13 @@ def _on_run(idx, words, query, ly_shallow, ly_middle, ly_deep, out_dir, model_id
             _MODEL, _PROC, image, query, list(words), layers)
 
         yield "Rendering heatmap...", None, None, None
-        heatmap_path = out / "figure3_reproduction.png"
+        heatmap_path = out / "text_visual_attention_reproduction.png"
         plot_heatmap_grid(pwl, image, sinks, grid, lyrs, query, heatmap_path)
 
         yield "Computing metrics...", None, None, None
         df = compute_metrics(pwl, sinks, lyrs)
-        df.to_csv(out / "figure3_metrics.csv", index=False)
-        bar_path = out / "figure3_metrics.png"
+        df.to_csv(out / "text_visual_attention_metrics.csv", index=False)
+        bar_path = out / "text_visual_attention_metrics.png"
         plot_metrics_bar(df, lyrs, bar_path)
 
         yield (f"Done. Outputs saved to {out}/",
@@ -172,9 +172,9 @@ def _build_ui(cfg: dict):
         run_btn = gr.Button("Run Figure 3", variant="primary", interactive=False)
         status  = gr.Markdown("*Ready.*")
         with gr.Row():
-            out_heatmap = gr.Image(label="figure3_reproduction.png", type="filepath")
-            out_bar     = gr.Image(label="figure3_metrics.png",      type="filepath")
-        out_df = gr.Dataframe(label="figure3_metrics.csv", interactive=False)
+            out_heatmap = gr.Image(label="text_visual_attention_reproduction.png", type="filepath")
+            out_bar     = gr.Image(label="text_visual_attention_metrics.png",      type="filepath")
+        out_df = gr.Dataframe(label="text_visual_attention_metrics.csv", interactive=False)
         out_dir_state   = gr.State(value=str(DEFAULT_OUT_DIR))
         model_id_state  = gr.State(value=model_id)
 
@@ -203,7 +203,7 @@ def launch(host: str = "0.0.0.0", port: int = 7860,
 
 
 def main():
-    p = argparse.ArgumentParser(prog="python -m vtp_eval.figure3.ui")
+    p = argparse.ArgumentParser(prog="python -m vtp_eval.insight.text_visual_attention.ui")
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=7860)
     p.add_argument("--config", default=str(DEFAULT_CONFIG))

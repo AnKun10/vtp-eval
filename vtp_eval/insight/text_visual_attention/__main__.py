@@ -1,12 +1,12 @@
-"""CLI entry: ``python -m vtp_eval.figure3``.
+"""CLI entry: ``python -m vtp_eval.insight.text_visual_attention``.
 
 Two modes:
 
     # 1) Surface candidates with their COCO category labels
-    python -m vtp_eval.figure3 --list-samples
+    python -m vtp_eval.insight.text_visual_attention --list-samples
 
     # 2) Run the full pipeline picking image #N and target words from labels
-    python -m vtp_eval.figure3 --chosen-index N --words "person" "sports ball"
+    python -m vtp_eval.insight.text_visual_attention --chosen-index N --words "person" "sports ball"
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ from .coco import (DEFAULT_ANN_DIR, DEFAULT_ROOT, download_candidate_image,
                    save_candidates_preview)
 from .tokens import build_default_query
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG = REPO_ROOT / "configs/figure3.yaml"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_CONFIG = REPO_ROOT / "configs/text_visual_attention.yaml"
 DEFAULT_OUT_DIR = (DEFAULT_ROOT / "outputs") if DEFAULT_ROOT.name == "workspace" \
     else (Path.cwd() / "outputs")
 
@@ -38,7 +38,7 @@ def _load_config(path: str) -> dict:
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
-        prog="python -m vtp_eval.figure3",
+        prog="python -m vtp_eval.insight.text_visual_attention",
         description="Reproduce Figure 3 of LearnPruner (ICLR 2026).",
     )
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
@@ -88,7 +88,7 @@ def main(argv=None) -> None:
     if args.list_samples:
         print()
         print("Next step: choose an idx and target words from the categories above.")
-        print('Example: python -m vtp_eval.figure3 '
+        print('Example: python -m vtp_eval.insight.text_visual_attention '
               '--chosen-index 0 --words "person" "sports ball"')
         return
 
@@ -124,16 +124,16 @@ def main(argv=None) -> None:
     print("Sink indices:", sorted(sinks))
 
     plot_heatmap_grid(pwl, image, sinks, grid, lyrs, query,
-                      out_dir / "figure3_reproduction.png")
-    print(f"Saved: {out_dir / 'figure3_reproduction.png'}")
+                      out_dir / "text_visual_attention_reproduction.png")
+    print(f"Saved: {out_dir / 'text_visual_attention_reproduction.png'}")
 
     df = compute_metrics(pwl, sinks, lyrs)
-    df.to_csv(out_dir / "figure3_metrics.csv", index=False)
+    df.to_csv(out_dir / "text_visual_attention_metrics.csv", index=False)
     print()
     print(df.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
 
-    plot_metrics_bar(df, lyrs, out_dir / "figure3_metrics.png")
-    print(f"Saved: {out_dir / 'figure3_metrics.png'}")
+    plot_metrics_bar(df, lyrs, out_dir / "text_visual_attention_metrics.png")
+    print(f"Saved: {out_dir / 'text_visual_attention_metrics.png'}")
 
 
 if __name__ == "__main__":

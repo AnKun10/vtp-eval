@@ -8,6 +8,6 @@ Sub-modules:
     metrics    - entropy / max-share / top-5% mass per (word, layer).
 
 CLI:
-    python -m vtp_eval.figure3 --list-samples
-    python -m vtp_eval.figure3 --chosen-index N --words "person" "sports ball"
+    python -m vtp_eval.insight.text_visual_attention --list-samples
+    python -m vtp_eval.insight.text_visual_attention --chosen-index N --words "person" "sports ball"
 """
