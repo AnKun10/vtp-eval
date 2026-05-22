@@ -17,10 +17,17 @@ from typing import Dict, List
 
 
 class TimingHook:
-    """Records per-sample latency and peak memory.
+    """Records per-call latency and peak memory.
 
     On GPU, .measure() uses torch.cuda.Event + max_memory_allocated().
     Without CUDA available, falls back to time.perf_counter() and skips memory.
+
+    `batch_size` records how many samples a single .measure() call covered, so
+    that downstream aggregation can compute per-sample latency = latency_ms /
+    batch_size. The previous version of this hook wrapped the *entire*
+    `generate_until()` call, which records the total wall-clock and reports it
+    as "per-sample" — wrong by a factor of N_samples. The hook should be
+    invoked once per `model.generate()` call (i.e., per batch).
     """
 
     def __init__(self) -> None:
@@ -28,7 +35,7 @@ class TimingHook:
         self.pruning_meta: Dict = {}
 
     @contextmanager
-    def measure(self):
+    def measure(self, batch_size: int = 1):
         try:
             import torch
             cuda = torch.cuda.is_available()
@@ -45,6 +52,7 @@ class TimingHook:
             self.record(
                 latency_ms=start.elapsed_time(end),
                 peak_mem_mb=torch.cuda.max_memory_allocated() / (1024 ** 2),
+                batch_size=batch_size,
             )
         else:
             t0 = time.perf_counter()
@@ -52,12 +60,14 @@ class TimingHook:
             self.record(
                 latency_ms=(time.perf_counter() - t0) * 1000,
                 peak_mem_mb=0,
+                batch_size=batch_size,
             )
 
-    def record(self, latency_ms: float, peak_mem_mb: float) -> None:
+    def record(self, latency_ms: float, peak_mem_mb: float, batch_size: int = 1) -> None:
         self._samples.append({
             "latency_ms": float(latency_ms),
             "peak_mem_mb": float(peak_mem_mb),
+            "batch_size": int(batch_size),
         })
 
     def summary(self) -> Dict:
@@ -67,15 +77,20 @@ class TimingHook:
                 "latency_per_sample_ms": {"mean": 0.0, "p50": 0.0, "p95": 0.0},
                 "peak_gpu_mem_mb": 0.0,
             }
-        lats = sorted(s["latency_ms"] for s in self._samples)
-        n = len(lats)
-        p50 = statistics.median(lats)
-        p95 = lats[min(int(n * 0.95), n - 1)]
+        # Per-sample latency = call latency / batch_size; assumes the batch was
+        # processed in parallel on-GPU so per-sample latency is the same.
+        per_sample = sorted(
+            s["latency_ms"] / max(1, s.get("batch_size", 1))
+            for s in self._samples
+        )
+        n = len(per_sample)
+        p50 = statistics.median(per_sample)
+        p95 = per_sample[min(int(n * 0.95), n - 1)]
         peak = max(s["peak_mem_mb"] for s in self._samples)
         return {
             "n_samples": n,
             "latency_per_sample_ms": {
-                "mean": statistics.fmean(lats),
+                "mean": statistics.fmean(per_sample),
                 "p50": p50,
                 "p95": p95,
             },
@@ -95,16 +110,21 @@ def parse_log_to_timing_json(sidecar: Path, output: Path) -> None:
     samples = raw.get("samples", [])
     meta = raw.get("pruning_meta", {"method": "unknown"})
     if samples:
-        lats = sorted(s["latency_ms"] for s in samples)
-        n = len(lats)
+        per_sample = sorted(
+            s["latency_ms"] / max(1, s.get("batch_size", 1)) for s in samples
+        )
+        total_wall_s = sum(s["latency_ms"] for s in samples) / 1000
+        n_calls = len(samples)
+        n_samples = sum(s.get("batch_size", 1) for s in samples)
         out = {
             "method": meta.get("method", "unknown"),
-            "n_samples": n,
-            "total_wall_s": sum(lats) / 1000,
+            "n_calls": n_calls,
+            "n_samples": n_samples,
+            "total_wall_s": total_wall_s,
             "latency_per_sample_ms": {
-                "mean": statistics.fmean(lats),
-                "p50": statistics.median(lats),
-                "p95": lats[min(int(n * 0.95), n - 1)],
+                "mean": statistics.fmean(per_sample),
+                "p50": statistics.median(per_sample),
+                "p95": per_sample[min(int(n_calls * 0.95), n_calls - 1)],
             },
             "peak_gpu_mem_mb": max(s["peak_mem_mb"] for s in samples),
             "pruning_meta": meta,

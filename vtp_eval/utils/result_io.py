@@ -13,10 +13,26 @@ from vtp_eval.utils.tflops import (
 )
 
 _OUTPUT_COLUMNS = [
-    "method", "pope_acc", "pope_f1", "pope_yes_ratio",
+    "method", "pope_acc", "pope_f1", "pope_precision", "pope_recall", "pope_yes_ratio",
     "latency_ms_mean", "latency_ms_p95", "peak_mem_mb",
-    "keep_ratio_pct", "tflops_prefill", "tflops_reduction_pct",
+    "keep_ratio_pct", "tflops_llm", "tflops_encoder", "tflops_prefill", "tflops_reduction_pct",
 ]
+
+
+# lmms-eval emits metric keys with a ",<filter>" suffix; for unfiltered tasks
+# (POPE here) the filter is the literal string "none". Earlier vtp-eval expected
+# bare keys (`pope_accuracy`) from an older lmms-eval; v0.5+ writes
+# `pope_accuracy,none`.
+def _metric(pope_dict: Dict, base_key: str):
+    if base_key in pope_dict:
+        return pope_dict[base_key]
+    suffixed = f"{base_key},none"
+    if suffixed in pope_dict:
+        return pope_dict[suffixed]
+    raise KeyError(
+        f"metric {base_key!r} not found in pope results "
+        f"(keys: {sorted(pope_dict.keys())})"
+    )
 
 
 def compute_keep_ratio(meta: Dict) -> float:
@@ -60,10 +76,27 @@ def _tflops_kwargs_from_meta(meta: Dict) -> Dict:
     raise KeyError(f"Unknown method: {method!r}")
 
 
+def _find_results_json(run_dir: Path) -> Optional[Path]:
+    """Return the lmms-eval results.json for this run, or None.
+
+    lmms-eval v0.5+ writes the file under `<run_dir>/<model_name>/<timestamp>_results.json`
+    (e.g. `results/baseline/liuhaotian__llava-v1.5-7b/20260517_142135_results.json`).
+    For backward compat we also accept the older `<run_dir>/results.json`.
+    """
+    direct = run_dir / "results.json"
+    if direct.exists():
+        return direct
+    candidates = list(run_dir.glob("*/*_results.json"))
+    if not candidates:
+        return None
+    # Most recent if multiple
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
 def _row_from_run(run_dir: Path) -> Optional[Dict]:
-    res_p = run_dir / "results.json"
+    res_p = _find_results_json(run_dir)
     tim_p = run_dir / "timing.json"
-    if not res_p.exists() or not tim_p.exists():
+    if res_p is None or not tim_p.exists():
         return None
     results = json.loads(res_p.read_text())
     timing = json.loads(tim_p.read_text())
@@ -72,13 +105,17 @@ def _row_from_run(run_dir: Path) -> Optional[Dict]:
     tf = compute_method_tflops(meta["method"], **_tflops_kwargs_from_meta(meta))
     return {
         "method": run_dir.name,
-        "pope_acc": pope["pope_accuracy"],
-        "pope_f1": pope["pope_f1_score"],
-        "pope_yes_ratio": pope["pope_yes_ratio"],
+        "pope_acc": _metric(pope, "pope_accuracy"),
+        "pope_f1": _metric(pope, "pope_f1_score"),
+        "pope_precision": _metric(pope, "pope_precision"),
+        "pope_recall": _metric(pope, "pope_recall"),
+        "pope_yes_ratio": _metric(pope, "pope_yes_ratio"),
         "latency_ms_mean": timing["latency_per_sample_ms"]["mean"],
         "latency_ms_p95": timing["latency_per_sample_ms"]["p95"],
         "peak_mem_mb": timing["peak_gpu_mem_mb"],
         "keep_ratio_pct": compute_keep_ratio(meta),
+        "tflops_llm": tf["tflops_llm_prefill"],
+        "tflops_encoder": tf["tflops_encoder"],
         "tflops_prefill": tf["tflops_total"],
         "_method_key": meta["method"],
     }

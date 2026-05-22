@@ -289,6 +289,36 @@ the `+=`, or document the per-method batch-size constraint and add a
 `batch_size: 1` per-run override knob to `configs/methods.yaml` +
 `scripts/run_one.sh`.
 
+### 20. DivPrune's pruning code is non-batch-aware → silent F1 drop at B>1
+`divprune/LLaVA/llava/model/llava_arch.py:373` performs the diverse-subset
+selection on `new_input_embeds[0][...]` (sample 0 only), then applies the
+resulting keep-indexs to the entire batch:
+
+```python
+visual_tokens = new_input_embeds[0][SYS_TOKEN_LEN:SYS_TOKEN_LEN+img_feature_len]
+selected_visual_tokens, _ = self.DivPrune(visual_tokens, ..., threshold_ratio=diverse_ratio)
+...
+new_input_embeds = new_input_embeds[:, keep_indexs]   # same mask for every batch element
+```
+
+With batch_size > 1, sample[1+] gets a token subset optimized for sample[0]'s
+image rather than its own, costing ~5pp POPE F1.
+
+Empirical confirmation on POPE / LLaVA-1.5 7B / `subset_ratio=0.098`:
+
+| Batch size | POPE F1 | POPE accuracy |
+|------------|---------|---------------|
+| 2 (buggy)  | 0.8101  | 0.8314        |
+| 1 (paper-faithful) | 0.8586 | 0.8697 |
+
+DivPrune's own `run_Divprune.sh` uses `--batch_size 1`, which sidesteps the
+bug; this is presumably why the paper-reported numbers are clean.
+
+**Fix:** force `batch_size: 1` for DivPrune in `configs/methods.yaml` (same
+mandatory-batch-1 treatment as SparseVLMs and SparseVILA). Until DivPrune's
+LLaVA fork makes its pruning loop batch-aware, this is the only way to
+reproduce paper numbers.
+
 ### 19. `install/visionzip.sh` skips `pip install -e /content/LLaVA` when the dir exists
 After fix #16 added `pip uninstall -y llava || true` at the top of every
 install script, `visionzip.sh` no longer reinstalls the LLaVA fork because

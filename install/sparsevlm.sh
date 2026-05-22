@@ -38,6 +38,27 @@ else:
     print("Patched LlavaLlamaDynamicForCausalLM.__init__ to accept **kwargs")
 PYEOF
 
+# Wrap the efficiency-info logger in modelling_sparse_llama.py:371. Without
+# this, certain POPE samples trigger `int(token_pool / num_forward)` where
+# num_token_pool intermediate computation goes to +inf, raising
+# `OverflowError: cannot convert float infinity to integer` mid-eval and
+# aborting after ~340/9000 samples. The logger is non-essential profiling.
+python - <<'PYEOF'
+from pathlib import Path
+p = Path("/content/SparseVLMs/llava/model/language_model/modelling_sparse_llama.py")
+src = p.read_text()
+old = 'loggerinfo.info(f"{prefix} Equal Tokens: {int(self.num_token_pool / self.num_forward)}, Prefill Time (ms): {self.total_cuda_time:.2f}, TFLOPs:{FLOPs_avg_sample:.2f}")'
+new = '''try:
+                loggerinfo.info(f"{prefix} Equal Tokens: {int(self.num_token_pool / self.num_forward) if self.num_forward else 0}, Prefill Time (ms): {self.total_cuda_time:.2f}, TFLOPs:{FLOPs_avg_sample:.2f}")
+            except (OverflowError, ValueError):
+                pass  # skip per-sample efficiency log when intermediate values are inf/nan'''
+if old in src:
+    p.write_text(src.replace(old, new))
+    print("Wrapped efficiency logger with try/except (OverflowError guard)")
+else:
+    print("WARN: efficiency-logger pattern not found (already patched?)")
+PYEOF
+
 pip install -e /content/SparseVLMs --no-deps   # installs SparseVLMs' LLaVA fork
 pip install -e /content/lmms-eval --no-deps
 pip install -e /content/vtp-eval --no-deps

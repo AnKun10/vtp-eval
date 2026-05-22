@@ -6,7 +6,6 @@ __init__ AFTER calling super().__init__.
 """
 from __future__ import annotations
 
-from contextlib import nullcontext
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -16,7 +15,13 @@ from vtp_eval.utils.timing import TimingHook
 
 
 class LlavaPruningBase(Llava):
-    """Llava adapter + per-batch timing + pruning_meta plumbing."""
+    """Llava adapter + per-batch timing + pruning_meta plumbing.
+
+    Timing strategy: wrap `self._model.generate` so TimingHook fires once per
+    `model.generate(...)` call (= once per batch) rather than once per
+    `generate_until()` (= once per whole eval run). This makes per-sample
+    latency = latency_ms / batch_size meaningful for FLOPs/latency reporting.
+    """
 
     def __init__(
         self,
@@ -34,12 +39,38 @@ class LlavaPruningBase(Llava):
         )
         self.pruning_meta: Dict = {}
 
+        if self.timing_hook is not None:
+            self._install_generate_hook()
+
+    def _install_generate_hook(self) -> None:
+        """Wrap `self._model.generate` so each call is timed via TimingHook.
+
+        Reads batch size from the `inputs`/`input_ids` first dim (or `images`
+        first dim for multimodal calls with no input_ids).
+        """
+        orig_generate = self._model.generate
+        hook = self.timing_hook
+
+        def _infer_batch_size(args, kwargs) -> int:
+            for key in ("inputs", "input_ids", "images"):
+                val = kwargs.get(key)
+                if val is not None and hasattr(val, "shape") and val.dim() >= 1:
+                    return int(val.shape[0])
+            if args and hasattr(args[0], "shape") and args[0].dim() >= 1:
+                return int(args[0].shape[0])
+            return 1
+
+        def timed_generate(*args, **kwargs):
+            bs = _infer_batch_size(args, kwargs)
+            with hook.measure(batch_size=bs):
+                return orig_generate(*args, **kwargs)
+
+        self._model.generate = timed_generate
+
     def generate_until(self, requests):
-        ctx = (self.timing_hook.measure()
-               if self.timing_hook is not None else nullcontext())
-        with ctx:
-            out = super().generate_until(requests)
-        # Dump sidecar after each batch (cheap, ensures partial results survive crash)
+        out = super().generate_until(requests)
+        # Dump sidecar after the whole eval (per-batch records already
+        # captured by the wrapped generate).
         if self.timing_hook is not None and self.timing_sidecar_path is not None:
             self.timing_hook.pruning_meta = self.pruning_meta
             self.timing_hook.dump(self.timing_sidecar_path)
