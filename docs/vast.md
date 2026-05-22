@@ -2,18 +2,16 @@
 
 | Script | Purpose |
 |--------|---------|
-| `figure3_vast_onstart.sh` | On-start for Vast.ai instances. Clones repo + installs Figure 3 deps. |
-| `figure3_ui.sh` | Launch the Gradio web UI for picking image + words interactively. |
-| `figure3_list_samples.sh` | Surface candidate COCO images + their full annotation labels. |
-| `figure3_run.sh` | Run the Figure 3 reproduction on a chosen candidate. |
-| `run_one.sh` | Run **one** pruning method on **one** benchmark (e.g. POPE). |
-| `run_all.sh` | Run every method in `configs/methods.yaml` sequentially. |
+| `vast/onstart.sh` | On-start for Vast.ai instances. Clones repo + installs Figure 3 deps. |
+| `text_visual_attention/ui.sh` | Launch the Gradio web UI for picking image + words interactively. |
+| `text_visual_attention/list_samples.sh` | Surface candidate COCO images + their full annotation labels. |
+| `text_visual_attention/run.sh` | Run the Figure 3 reproduction on a chosen candidate. |
 
 ---
 
 ## 🟢 Reproducing Figure 3 of LearnPruner on Vast.ai
 
-End-to-end runbook for renting a Vast instance and producing `figure3_reproduction.png`. **Total cost: ~$0.05–0.10**.
+End-to-end runbook for renting a Vast instance and producing `text_visual_attention_reproduction.png`. **Total cost: ~$0.05–0.10**.
 
 ### 1. Rent the instance
 
@@ -34,14 +32,14 @@ End-to-end runbook for renting a Vast instance and producing `figure3_reproducti
    | `JUPYTER_DIR` | `/workspace` |
    | `DATA_DIRECTORY` | `/workspace/` |
 
-8. **On-start Script:** paste the **entire contents** of [`figure3_vast_onstart.sh`](figure3_vast_onstart.sh) into the box.
+8. **On-start Script:** paste the **entire contents** of [`scripts/vast/onstart.sh`](../scripts/vast/onstart.sh) into the box.
 
    The script will:
    - `git clone https://github.com/AnKun10/vtp-eval.git` into `/workspace/vtp-eval`
    - `git pull --ff-only` (so re-rents pick up new commits)
-   - `bash install/figure3.sh` (transformers 4.49 + accelerate + matplotlib + pandas + pyyaml + `pip install -e .`)
+   - `bash install/text_visual_attention.sh` (transformers 4.49 + accelerate + matplotlib + pandas + pyyaml + `pip install -e .`)
    - Persist `HF_HOME` and auto-`cd /workspace/vtp-eval` for SSH sessions
-   - Sanity-check the GPU and verify the `vtp_eval.figure3` import
+   - Sanity-check the GPU and verify the `vtp_eval.insight.text_visual_attention` import
 
 9. Click **RENT**. The on-start runs once at first boot (~30–60 s).
 
@@ -61,14 +59,14 @@ End-to-end runbook for renting a Vast instance and producing `figure3_reproducti
    ```
    The log should end with `=== onstart finished: ...` and `GPU OK: <gpu name>`. If it halts mid-stream, re-run it — every step is idempotent:
    ```bash
-   bash /workspace/vtp-eval/scripts/figure3_vast_onstart.sh
+   bash /workspace/vtp-eval/scripts/vast/onstart.sh
    ```
 
 ### 3. Pick a candidate image + target words
 
 ```bash
 cd /workspace/vtp-eval      # (also automatic on SSH login)
-bash scripts/figure3_list_samples.sh
+bash scripts/text_visual_attention/list_samples.sh
 ```
 
 This downloads COCO val2017 annotations (one-time, ~241 MB), then prints a table like:
@@ -90,20 +88,20 @@ and saves `outputs/coco_candidates.png` (thumbnail grid you can open in the Vast
 ### 4. Run the full reproduction
 
 ```bash
-bash scripts/figure3_run.sh <idx> <word1> [word2] [word3]
+bash scripts/text_visual_attention/run.sh <idx> <word1> [word2] [word3]
 ```
 
 Examples:
 
 ```bash
 # Two single-word categories from candidate #0
-bash scripts/figure3_run.sh 0 person bicycle
+bash scripts/text_visual_attention/run.sh 0 person bicycle
 
 # A multi-word category — quote it
-bash scripts/figure3_run.sh 3 person "sports ball"
+bash scripts/text_visual_attention/run.sh 3 person "sports ball"
 
 # Three words on candidate #5
-bash scripts/figure3_run.sh 5 dog frisbee person
+bash scripts/text_visual_attention/run.sh 5 dog frisbee person
 ```
 
 On the first call, LLaVA-1.5-7B downloads (~14 GB, ~5 min). Subsequent runs reuse the HF cache and take ~30 s.
@@ -112,16 +110,16 @@ Outputs land in `/workspace/outputs/`:
 
 | File | Content |
 |------|---------|
-| `figure3_reproduction.png` | **The Figure 3 reproduction** — 2D grid: rows = target words, cols = shallow / middle / deep layers |
-| `figure3_metrics.csv` | Entropy, max-share, top-5% mass per (word, depth) |
-| `figure3_metrics.png` | Bar chart of the metrics |
+| `text_visual_attention_reproduction.png` | **The Figure 3 reproduction** — 2D grid: rows = target words, cols = shallow / middle / deep layers |
+| `text_visual_attention_metrics.csv` | Entropy, max-share, top-5% mass per (word, depth) |
+| `text_visual_attention_metrics.png` | Bar chart of the metrics |
 | `chosen_image.jpg` | The exact image used |
 | `coco_candidates.png` | Thumbnail grid from step 3 |
 | `candidates.json` | Machine-readable candidate list |
 
 ### 5. Verify the insight
 
-`figure3_metrics.csv` should show, for **every** target word:
+`text_visual_attention_metrics.csv` should show, for **every** target word:
 
 | token  | depth   | layer | entropy ↓ | max_share ↑ | top5pct_mass ↑ |
 |--------|---------|-------|-----------|-------------|----------------|
@@ -129,7 +127,7 @@ Outputs land in `/workspace/outputs/`:
 | word_A | middle  | 12    | **min**   | **max**     | **max**        |
 | word_A | deep    | 30    | …         | …           | …              |
 
-Visually, the **middle column** of `figure3_reproduction.png` should highlight the actual object location (per COCO annotation) for each word, while the shallow / deep columns are diffuse or collapsed onto sink tokens.
+Visually, the **middle column** of `text_visual_attention_reproduction.png` should highlight the actual object location (per COCO annotation) for each word, while the shallow / deep columns are diffuse or collapsed onto sink tokens.
 
 ### 6. Retrieve outputs
 
@@ -174,7 +172,7 @@ Inside the SSH session:
 
 ```bash
 cd /workspace/vtp-eval
-bash scripts/figure3_ui.sh
+bash scripts/text_visual_attention/ui.sh
 ```
 
 Gradio prints `Running on local URL: http://0.0.0.0:7860`. Leave the script running.
@@ -188,9 +186,9 @@ Open `http://localhost:7860` in your laptop's browser. Then:
 3. Tick 1–3 word checkboxes — the query box auto-fills (you can edit it). The Run button enables.
 4. Click **Run Figure 3** — status messages stream as LLaVA loads (one-time, ~5 min) and the forward pass runs (~10 s).
 5. Outputs render inline AND save to `/workspace/outputs/`:
-   - `figure3_reproduction.png` — the heatmap grid
-   - `figure3_metrics.png` — the entropy / top-5% bar chart
-   - `figure3_metrics.csv` — the underlying metrics table
+   - `text_visual_attention_reproduction.png` — the heatmap grid
+   - `text_visual_attention_metrics.png` — the entropy / top-5% bar chart
+   - `text_visual_attention_metrics.csv` — the underlying metrics table
 
 The model stays loaded between runs, so repeat experiments (different image or different words) finish in ~10 s.
 
@@ -198,33 +196,19 @@ The model stays loaded between runs, so repeat experiments (different image or d
 
 | Symptom | Fix |
 |---------|-----|
-| `OSError: [Errno 98] Address already in use` | A previous Gradio session is still bound. `pkill -f "vtp_eval.figure3.ui"`, then re-launch. |
-| Browser shows "connection refused" at `localhost:7860` | The SSH tunnel dropped or the UI isn't running. Check `bash scripts/figure3_ui.sh` is still printing in the SSH session, and that your local `ssh -L 7860:...` is alive. |
+| `OSError: [Errno 98] Address already in use` | A previous Gradio session is still bound. `pkill -f "vtp_eval.insight.text_visual_attention.ui"`, then re-launch. |
+| Browser shows "connection refused" at `localhost:7860` | The SSH tunnel dropped or the UI isn't running. Check `bash scripts/text_visual_attention/ui.sh` is still printing in the SSH session, and that your local `ssh -L 7860:...` is alive. |
 | UI loads but Run button stays grey | You picked an image but no words yet (or vice versa). Tick at least one checkbox. |
 | Status reads "Words not found as contiguous tokens" | You edited the query and removed one of the words. Either add it back or untick the missing word. |
 
 ---
 
-## 🧪 Other workflows (existing methods)
-
-These predate Figure 3 and target the lmms-eval pruning benchmark. They use a **different** install path (`install/baseline.sh` etc.) and expect `notebooks/pope_eval.ipynb`. See the top-level [`README.md`](../README.md).
-
-```bash
-# Run one method on POPE locally
-bash install/baseline.sh
-bash scripts/run_one.sh baseline configs/methods.yaml pope 100
-
-# Run all methods (requires isolated env per method)
-bash scripts/run_all.sh
-```
-
----
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| `onstart.log` halts mid-stream | Re-run `bash scripts/figure3_vast_onstart.sh`. Idempotent. |
+| `onstart.log` halts mid-stream | Re-run `bash scripts/vast/onstart.sh`. Idempotent. |
 | `torch.cuda.is_available()` is `False` | Instance does not expose the GPU. Destroy and pick another host. |
 | CUDA OOM during forward pass | < 24 GB VRAM. Rent a bigger card. |
 | `Words not found as contiguous tokens` | Auto-built query already mentions each `--words` entry verbatim. If you pass `--query` yourself, ensure every word is in it. Multi-word categories must be quoted: `"sports ball"`. |

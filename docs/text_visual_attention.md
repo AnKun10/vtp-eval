@@ -42,21 +42,21 @@ Concentration metrics (entropy, max-share, top-5% mass)
 ## Layout
 
 ```
-vtp_eval/figure3/
+vtp_eval/insight/text_visual_attention/
   __init__.py
-  __main__.py    # CLI: python -m vtp_eval.figure3 ...
+  __main__.py    # CLI: python -m vtp_eval.insight.text_visual_attention ...
   coco.py        # ensure_coco_ann, pick_candidates, previews
   tokens.py      # find_word_positions (multi-token), build_default_query
   attention.py   # load_llava, extract_attention
   visualize.py   # overlay_from_vec, plot_heatmap_grid, plot_metrics_bar
   metrics.py     # compute_metrics
 
-install/figure3.sh                    # transformers==4.49 + pip install -e .
-scripts/figure3_vast_onstart.sh       # ~30-line Vast on-start
-scripts/figure3_list_samples.sh
-scripts/figure3_run.sh
-configs/figure3.yaml                  # model_id, layers, candidate filters
-notebooks/figure3_reproduction.ipynb  # interactive Jupyter version
+install/text_visual_attention.sh                    # transformers==4.49 + pip install -e .
+scripts/vast/onstart.sh       # ~30-line Vast on-start
+scripts/text_visual_attention/list_samples.sh
+scripts/text_visual_attention/run.sh
+configs/text_visual_attention.yaml                  # model_id, layers, candidate filters
+notebooks/text_visual_attention.ipynb  # interactive Jupyter version
 ```
 
 ## Usage
@@ -70,24 +70,24 @@ notebooks/figure3_reproduction.ipynb  # interactive Jupyter version
    - `HF_HOME` → `/workspace/.cache/huggingface`
    - `JUPYTER_DIR` → `/workspace`
    - `DATA_DIRECTORY` → `/workspace/`
-5. Paste the entire content of `scripts/figure3_vast_onstart.sh` into the On-start Script box.
+5. Paste the entire content of `scripts/vast/onstart.sh` into the On-start Script box.
 6. **RENT**. Wait ~30 s for onstart, then SSH in.
 
-Inside SSH, choose between the CLI workflow below or the interactive Gradio UI — see [`scripts/README.md` → "Interactive UI workflow"](../scripts/README.md#-interactive-ui-workflow) for the UI path.
+Inside SSH, choose between the CLI workflow below or the interactive Gradio UI — see [`docs/vast.md` → "Interactive UI workflow"](vast.md#-interactive-ui-workflow) for the UI path.
 
 ```bash
 # Optional: confirm onstart finished cleanly
 tail -n 20 /workspace/onstart.log
 
 # 1. Surface candidate images with their COCO category labels
-bash scripts/figure3_list_samples.sh
-# (or: python -m vtp_eval.figure3 --list-samples)
+bash scripts/text_visual_attention/list_samples.sh
+# (or: python -m vtp_eval.insight.text_visual_attention --list-samples)
 # Writes:  /workspace/outputs/coco_candidates.png  +  candidates.json
 # Prints:  idx  id  size  categories(area)
 
 # 2. Pick an idx and words from that row's category list
-bash scripts/figure3_run.sh 0 person bicycle
-# (or: python -m vtp_eval.figure3 --chosen-index 0 --words "person" "bicycle")
+bash scripts/text_visual_attention/run.sh 0 person bicycle
+# (or: python -m vtp_eval.insight.text_visual_attention --chosen-index 0 --words "person" "bicycle")
 # LLaVA downloads on first call (~14 GB, ~5 min); subsequent runs ~30 s.
 ```
 
@@ -96,14 +96,14 @@ Multi-word categories (`"sports ball"`, `"tennis racket"`, `"fire hydrant"`) are
 ### Locally (24 GB+ GPU)
 
 ```bash
-bash install/figure3.sh
-python -m vtp_eval.figure3 --list-samples
-python -m vtp_eval.figure3 --chosen-index 0 --words "person" "bicycle"
+bash install/text_visual_attention.sh
+python -m vtp_eval.insight.text_visual_attention --list-samples
+python -m vtp_eval.insight.text_visual_attention --chosen-index 0 --words "person" "bicycle"
 ```
 
 ### Jupyter
 
-Open `notebooks/figure3_reproduction.ipynb` and run all cells. The notebook imports the same `vtp_eval.figure3.*` modules, so behavior matches the CLI.
+Open `notebooks/text_visual_attention.ipynb` and run all cells. The notebook imports the same `vtp_eval.insight.text_visual_attention.*` modules, so behavior matches the CLI.
 
 ## Outputs
 
@@ -114,9 +114,9 @@ Under `/workspace/outputs/` (or `./outputs/` locally):
 | `coco_candidates.png` | thumbnail grid with annotation labels |
 | `candidates.json` | machine-readable candidate list |
 | `chosen_image.jpg` | the image the run actually used |
-| `figure3_reproduction.png` | **the Figure 3 reproduction** — heatmap grid |
-| `figure3_metrics.csv` | entropy / max_share / top5pct_mass per (word, depth) |
-| `figure3_metrics.png` | bar chart visualizing the same metrics |
+| `text_visual_attention_reproduction.png` | **the Figure 3 reproduction** — heatmap grid |
+| `text_visual_attention_metrics.csv` | entropy / max_share / top5pct_mass per (word, depth) |
+| `text_visual_attention_metrics.png` | bar chart visualizing the same metrics |
 
 ## Interpreting the result
 
@@ -128,11 +128,11 @@ The paper's insight predicts, for every target word, that the **middle** column 
 | word_A | middle  | 12    | **min**   | **max**     | **max**        |
 | word_A | deep    | 30    | …         | …           | …              |
 
-Visually, the middle column of `figure3_reproduction.png` should show a heatmap that clearly aligns with where the named object actually is in the image (per the COCO annotation).
+Visually, the middle column of `text_visual_attention_reproduction.png` should show a heatmap that clearly aligns with where the named object actually is in the image (per the COCO annotation).
 
 ## Troubleshooting
 
-- **`onstart.log` halts mid-stream:** re-run `bash scripts/figure3_vast_onstart.sh` — every step is idempotent.
+- **`onstart.log` halts mid-stream:** re-run `bash scripts/vast/onstart.sh` — every step is idempotent.
 - **`torch.cuda.is_available()` is False:** the rented instance is not exposing the GPU. Destroy and pick a different host.
 - **CUDA OOM on forward pass:** the instance has < 24 GB VRAM. LLaVA-1.5-7B fp16 peaks around 16 GB; rent a 24 GB+ card.
 - **"Words not found as contiguous tokens":** the auto-built query mentions each `--words` entry verbatim, but if you pass `--query` yourself it must contain them too. Multi-word categories must be quoted: `--words "sports ball"`.
