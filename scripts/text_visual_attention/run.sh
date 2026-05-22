@@ -2,11 +2,11 @@
 # Run the Figure 3 reproduction on candidate #<idx> tracking the given words.
 #
 # Usage:
-#     bash scripts/figure3_run.sh <chosen-index> <word> [word...]
+#     bash scripts/text_visual_attention/run.sh <chosen-index> <word> [word...]
 #
 # Examples:
-#     bash scripts/figure3_run.sh 0 person bicycle
-#     bash scripts/figure3_run.sh 3 person "sports ball"
+#     bash scripts/text_visual_attention/run.sh 0 person bicycle
+#     bash scripts/text_visual_attention/run.sh 3 person "sports ball"
 set -euo pipefail
 
 IDX=${1:?usage: $0 <chosen-index> <word> [word...]}
@@ -16,4 +16,4 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-python -m vtp_eval.figure3 --chosen-index "$IDX" --words "$@"
+python -m vtp_eval.insight.text_visual_attention --chosen-index "$IDX" --words "$@"

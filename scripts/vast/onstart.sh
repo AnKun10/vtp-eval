@@ -34,6 +34,6 @@ grep -q 'cd /workspace/vtp-eval' /root/.bashrc 2>/dev/null \
 
 nvidia-smi -L
 python -c "import torch; assert torch.cuda.is_available(); print('GPU OK:', torch.cuda.get_device_name(0))"
-python -c "import vtp_eval.figure3 as f3; print('figure3 package OK')"
+python -c "import vtp_eval.insight.text_visual_attention as tva; print('text_visual_attention package OK')"
 
 echo "=== onstart finished: $(date -Iseconds) ==="

@@ -6,6 +6,6 @@
 #     # then open http://localhost:7860 in your browser
 #
 # Forward additional args to the underlying CLI:
-#     bash scripts/figure3_ui.sh --port 8000
+#     bash scripts/text_visual_attention/ui.sh --port 8000
 set -euo pipefail
-python -m vtp_eval.figure3.ui "$@"
+python -m vtp_eval.insight.text_visual_attention.ui "$@"
