@@ -124,16 +124,16 @@ def main(argv=None) -> None:
     print("Sink indices:", sorted(sinks))
 
     plot_heatmap_grid(pwl, image, sinks, grid, lyrs, query,
-                      out_dir / "text_visual_attention_reproduction.png")
-    print(f"Saved: {out_dir / 'text_visual_attention_reproduction.png'}")
+                      out_dir / "figure3_reproduction.png")
+    print(f"Saved: {out_dir / 'figure3_reproduction.png'}")
 
     df = compute_metrics(pwl, sinks, lyrs)
-    df.to_csv(out_dir / "text_visual_attention_metrics.csv", index=False)
+    df.to_csv(out_dir / "figure3_metrics.csv", index=False)
     print()
     print(df.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
 
-    plot_metrics_bar(df, lyrs, out_dir / "text_visual_attention_metrics.png")
-    print(f"Saved: {out_dir / 'text_visual_attention_metrics.png'}")
+    plot_metrics_bar(df, lyrs, out_dir / "figure3_metrics.png")
+    print(f"Saved: {out_dir / 'figure3_metrics.png'}")
 
 
 if __name__ == "__main__":

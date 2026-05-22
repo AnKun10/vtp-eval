@@ -121,13 +121,13 @@ def _on_run(idx, words, query, ly_shallow, ly_middle, ly_deep, out_dir, model_id
             _MODEL, _PROC, image, query, list(words), layers)
 
         yield "Rendering heatmap...", None, None, None
-        heatmap_path = out / "text_visual_attention_reproduction.png"
+        heatmap_path = out / "figure3_reproduction.png"
         plot_heatmap_grid(pwl, image, sinks, grid, lyrs, query, heatmap_path)
 
         yield "Computing metrics...", None, None, None
         df = compute_metrics(pwl, sinks, lyrs)
-        df.to_csv(out / "text_visual_attention_metrics.csv", index=False)
-        bar_path = out / "text_visual_attention_metrics.png"
+        df.to_csv(out / "figure3_metrics.csv", index=False)
+        bar_path = out / "figure3_metrics.png"
         plot_metrics_bar(df, lyrs, bar_path)
 
         yield (f"Done. Outputs saved to {out}/",
@@ -172,9 +172,9 @@ def _build_ui(cfg: dict):
         run_btn = gr.Button("Run Figure 3", variant="primary", interactive=False)
         status  = gr.Markdown("*Ready.*")
         with gr.Row():
-            out_heatmap = gr.Image(label="text_visual_attention_reproduction.png", type="filepath")
-            out_bar     = gr.Image(label="text_visual_attention_metrics.png",      type="filepath")
-        out_df = gr.Dataframe(label="text_visual_attention_metrics.csv", interactive=False)
+            out_heatmap = gr.Image(label="figure3_reproduction.png", type="filepath")
+            out_bar     = gr.Image(label="figure3_metrics.png",      type="filepath")
+        out_df = gr.Dataframe(label="figure3_metrics.csv", interactive=False)
         out_dir_state   = gr.State(value=str(DEFAULT_OUT_DIR))
         model_id_state  = gr.State(value=model_id)
 
