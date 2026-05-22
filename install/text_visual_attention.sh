@@ -7,8 +7,9 @@
 set -euo pipefail
 
 # 1. Some PyTorch base images (vastai/pytorch:latest) ship only `python3`.
-#    Our wrappers (figure3_ui.sh, figure3_run.sh, figure3_list_samples.sh,
-#    figure3_vast_onstart.sh) all call `python`. Create the symlink if absent.
+#    Our wrappers (text_visual_attention/ui.sh, text_visual_attention/run.sh,
+#    text_visual_attention/list_samples.sh, vast/onstart.sh) all call `python`.
+#    Create the symlink if absent.
 if ! command -v python >/dev/null 2>&1; then
     ln -sf "$(command -v python3)" /usr/local/bin/python
     echo "[install/figure3] Created python -> python3 symlink"
@@ -35,7 +36,7 @@ pip install --no-cache-dir \
     "jupyterlab>=4" \
     "gradio>=5.0,<6"
 
-# 4. Install vtp-eval as editable so `python -m vtp_eval.figure3` resolves.
+# 4. Install vtp-eval as editable so `python -m vtp_eval.insight.text_visual_attention` resolves.
 # --no-deps because the install above already pinned the heavy ones; we don't
 # want pip resolving the broader vtp-eval extras here.
 pip install -e . --no-deps

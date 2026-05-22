@@ -1,5 +1,5 @@
 # Defaults for Figure 3 of LearnPruner (ICLR 2026) reproduction.
-# Override any value via CLI flags to `python -m vtp_eval.figure3`.
+# Override any value via CLI flags to `python -m vtp_eval.insight.text_visual_attention`.
 
 model_id: llava-hf/llava-1.5-7b-hf
 

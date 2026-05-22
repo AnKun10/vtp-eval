@@ -28,7 +28,7 @@ DEFAULT_OUT_DIR = (DEFAULT_ROOT / "outputs") if DEFAULT_ROOT.name == "workspace"
     else (Path.cwd() / "outputs")
 
 # Module-level state shared across UI events. Loaded lazily so that
-# `python -m vtp_eval.figure3.ui` starts in <1 s without touching CUDA.
+# `python -m vtp_eval.insight.text_visual_attention.ui` starts in <1 s without touching CUDA.
 _CANDS: list = []
 _IMG_INFO: dict = {}
 _MODEL = None
