@@ -114,9 +114,9 @@ Under `/workspace/outputs/` (or `./outputs/` locally):
 | `coco_candidates.png` | thumbnail grid with annotation labels |
 | `candidates.json` | machine-readable candidate list |
 | `chosen_image.jpg` | the image the run actually used |
-| `text_visual_attention_reproduction.png` | **the Figure 3 reproduction** — heatmap grid |
-| `text_visual_attention_metrics.csv` | entropy / max_share / top5pct_mass per (word, depth) |
-| `text_visual_attention_metrics.png` | bar chart visualizing the same metrics |
+| `figure3_reproduction.png` | **the Figure 3 reproduction** — heatmap grid |
+| `figure3_metrics.csv` | entropy / max_share / top5pct_mass per (word, depth) |
+| `figure3_metrics.png` | bar chart visualizing the same metrics |
 
 ## Interpreting the result
 
@@ -128,7 +128,7 @@ The paper's insight predicts, for every target word, that the **middle** column 
 | word_A | middle  | 12    | **min**   | **max**     | **max**        |
 | word_A | deep    | 30    | …         | …           | …              |
 
-Visually, the middle column of `text_visual_attention_reproduction.png` should show a heatmap that clearly aligns with where the named object actually is in the image (per the COCO annotation).
+Visually, the middle column of `figure3_reproduction.png` should show a heatmap that clearly aligns with where the named object actually is in the image (per the COCO annotation).
 
 ## Troubleshooting
 

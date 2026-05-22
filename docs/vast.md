@@ -11,7 +11,7 @@
 
 ## 🟢 Reproducing Figure 3 of LearnPruner on Vast.ai
 
-End-to-end runbook for renting a Vast instance and producing `text_visual_attention_reproduction.png`. **Total cost: ~$0.05–0.10**.
+End-to-end runbook for renting a Vast instance and producing `figure3_reproduction.png`. **Total cost: ~$0.05–0.10**.
 
 ### 1. Rent the instance
 
@@ -110,16 +110,16 @@ Outputs land in `/workspace/outputs/`:
 
 | File | Content |
 |------|---------|
-| `text_visual_attention_reproduction.png` | **The Figure 3 reproduction** — 2D grid: rows = target words, cols = shallow / middle / deep layers |
-| `text_visual_attention_metrics.csv` | Entropy, max-share, top-5% mass per (word, depth) |
-| `text_visual_attention_metrics.png` | Bar chart of the metrics |
+| `figure3_reproduction.png` | **The Figure 3 reproduction** — 2D grid: rows = target words, cols = shallow / middle / deep layers |
+| `figure3_metrics.csv` | Entropy, max-share, top-5% mass per (word, depth) |
+| `figure3_metrics.png` | Bar chart of the metrics |
 | `chosen_image.jpg` | The exact image used |
 | `coco_candidates.png` | Thumbnail grid from step 3 |
 | `candidates.json` | Machine-readable candidate list |
 
 ### 5. Verify the insight
 
-`text_visual_attention_metrics.csv` should show, for **every** target word:
+`figure3_metrics.csv` should show, for **every** target word:
 
 | token  | depth   | layer | entropy ↓ | max_share ↑ | top5pct_mass ↑ |
 |--------|---------|-------|-----------|-------------|----------------|
@@ -127,7 +127,7 @@ Outputs land in `/workspace/outputs/`:
 | word_A | middle  | 12    | **min**   | **max**     | **max**        |
 | word_A | deep    | 30    | …         | …           | …              |
 
-Visually, the **middle column** of `text_visual_attention_reproduction.png` should highlight the actual object location (per COCO annotation) for each word, while the shallow / deep columns are diffuse or collapsed onto sink tokens.
+Visually, the **middle column** of `figure3_reproduction.png` should highlight the actual object location (per COCO annotation) for each word, while the shallow / deep columns are diffuse or collapsed onto sink tokens.
 
 ### 6. Retrieve outputs
 
@@ -186,9 +186,9 @@ Open `http://localhost:7860` in your laptop's browser. Then:
 3. Tick 1–3 word checkboxes — the query box auto-fills (you can edit it). The Run button enables.
 4. Click **Run Figure 3** — status messages stream as LLaVA loads (one-time, ~5 min) and the forward pass runs (~10 s).
 5. Outputs render inline AND save to `/workspace/outputs/`:
-   - `text_visual_attention_reproduction.png` — the heatmap grid
-   - `text_visual_attention_metrics.png` — the entropy / top-5% bar chart
-   - `text_visual_attention_metrics.csv` — the underlying metrics table
+   - `figure3_reproduction.png` — the heatmap grid
+   - `figure3_metrics.png` — the entropy / top-5% bar chart
+   - `figure3_metrics.csv` — the underlying metrics table
 
 The model stays loaded between runs, so repeat experiments (different image or different words) finish in ~10 s.
 
