@@ -108,3 +108,33 @@ def test_stage1_forward_returns_R1_selected_patches():
     keep = selection.select_stage1(attn, hidden, 5, 3)
     expected = hidden[:, 1:, :].gather(1, keep[:, :, None].expand(B, 8, D))
     assert torch.allclose(feats, expected)
+
+
+def test_make_forward_batched_and_list_branches():
+    from vtp_eval.proposed_method import stage1_vision
+    from vtp_eval.proposed_method.config import ProposedConfig
+
+    H, P, D = 2, 20, 16
+
+    class _StubTower:
+        device = "cpu"
+        dtype = torch.float32
+
+        def vision_tower(self, images, output_hidden_states, output_attentions):
+            n = images.shape[0]
+            attn = torch.rand(n, H, 1 + P, 1 + P)
+            hidden = torch.randn(n, 1 + P, D)
+            return _FakeOutputs(attentions=[attn, attn], hidden_states=[hidden, hidden])
+
+    cfg = ProposedConfig(dominant_k=5, diversity_m=3, pruned_layer=12, llm_keep_r2=4)
+    fwd = stage1_vision.make_forward(cfg)
+    stub = _StubTower()
+
+    # batched-tensor branch -> [B, R1, D]
+    out = fwd(stub, torch.randn(2, 3, 4, 4))
+    assert out.shape == (2, 8, D)
+
+    # list branch -> list of per-image [1, R1, D]
+    out_list = fwd(stub, [torch.randn(3, 4, 4), torch.randn(3, 4, 4)])
+    assert isinstance(out_list, list) and len(out_list) == 2
+    assert out_list[0].shape == (1, 8, D)
