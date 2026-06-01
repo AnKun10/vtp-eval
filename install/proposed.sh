@@ -34,10 +34,17 @@ if [ "$PYV" -ge 312 ]; then
 else
     TORCH_PKG="torch==2.1.2"; TV_PKG="torchvision==0.16.2"
 fi
-echo "[install/proposed] python=$PYV -> $TORCH_PKG"
-pip uninstall -y torch torchvision triton 2>/dev/null || true
-pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 \
-    "$TORCH_PKG" "$TV_PKG"
+# Skip the slow (~757 MB) reinstall if a compatible CUDA torch is already in
+# this env — e.g. on a Stop/Start reboot where the venv persisted, or on a base
+# image that already ships torch 2.1/2.2 + CUDA. Only download when needed.
+if python -c "import torch,sys; sys.exit(0 if (torch.__version__.startswith(('2.1.','2.2.')) and torch.version.cuda) else 1)" 2>/dev/null; then
+    echo "[install/proposed] compatible torch present ($(python -c 'import torch;print(torch.__version__)')) — skipping torch reinstall"
+else
+    echo "[install/proposed] python=$PYV -> installing $TORCH_PKG (cu121)"
+    pip uninstall -y torch torchvision triton 2>/dev/null || true
+    pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 \
+        "$TORCH_PKG" "$TV_PKG"
+fi
 
 # 3. Clone the original LLaVA repo and install it WITHOUT deps (we pin
 #    torch/transformers ourselves). Relax LLaVA's hard version pins first.
