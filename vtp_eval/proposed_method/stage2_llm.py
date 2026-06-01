@@ -186,6 +186,14 @@ def _llama_forward_437(self, cfg, input_ids=None, attention_mask=None,
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input_ids)
 
+    # Stage-2 pruning shrank the KV cache, but generate() still passes a 2D
+    # attention_mask sized to the ORIGINAL (unpruned) length. If it no longer
+    # matches the (pruned) cache length, drop it and let a clean causal mask be
+    # rebuilt (batch_size=1 inference: no padding to preserve).
+    if attention_mask is not None and attention_mask.dim() == 2 \
+            and attention_mask.shape[-1] != past_key_values_length + seq_length:
+        attention_mask = None
+
     if getattr(self, "_use_flash_attention_2", False):
         attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
     elif getattr(self, "_use_sdpa", False) and not output_attentions:
