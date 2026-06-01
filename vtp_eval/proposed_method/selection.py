@@ -49,3 +49,26 @@ def farthest_point_diversity(feats: torch.Tensor, seed_idx: torch.Tensor,
         new_sim = torch.gather(sim, 2, nxt.view(B, 1, 1).expand(B, P, 1)).squeeze(2)
         max_sim = torch.maximum(max_sim, new_sim)
     return out
+
+
+def select_stage1(attn_penult: torch.Tensor, hidden_penult: torch.Tensor,
+                  dominant_k: int, diversity_m: int) -> torch.Tensor:
+    """Compose Stage 1 selection over the penultimate vision-encoder layer.
+
+    attn_penult:   [B, H, 1+P, 1+P] attention (index 0 = CLS).
+    hidden_penult: [B, 1+P, D] hidden states (index 0 = CLS).
+    Returns: [B, R1] PATCH indices in [0, P), sorted ascending. R1 = k + m.
+    CLS is used only as the attention query; it is not part of the output.
+    """
+    cls_attn = attn_penult[:, :, 0, 1:].sum(dim=1)        # [B, P] head-summed
+    dominant = cls_topk_dominant(cls_attn, dominant_k)    # [B, k]
+
+    if diversity_m > 0:
+        patches = hidden_penult[:, 1:, :]                 # [B, P, D]
+        feats = F.normalize(patches, dim=-1)
+        diversity = farthest_point_diversity(feats, dominant, diversity_m)  # [B, m]
+        keep = torch.cat([dominant, diversity], dim=1)
+    else:
+        keep = dominant
+
+    return keep.sort(dim=1).values

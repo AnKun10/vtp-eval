@@ -28,3 +28,23 @@ def test_diversity_prefers_dissimilar_token():
     seed = torch.tensor([[0]])
     out = selection.farthest_point_diversity(feats, seed, m=1)
     assert out[0, 0].item() == 2
+
+
+def test_select_stage1_shapes_and_sorted():
+    B, H, P, Dh, D = 2, 4, 20, 6, 16
+    attn = torch.rand(B, H, 1 + P, 1 + P)
+    hidden = torch.randn(B, 1 + P, D)
+    keep = selection.select_stage1(attn, hidden, dominant_k=5, diversity_m=3)
+    assert keep.shape == (B, 8)                       # R1 = 5 + 3
+    assert (keep[:, 1:] >= keep[:, :-1]).all()        # sorted ascending
+    assert keep.max().item() < P and keep.min().item() >= 0
+    for b in range(B):
+        assert len(set(keep[b].tolist())) == 8        # no duplicates
+
+
+def test_select_stage1_diversity_zero_returns_dominant_only():
+    B, H, P, D = 1, 2, 12, 8
+    attn = torch.rand(B, H, 1 + P, 1 + P)
+    hidden = torch.randn(B, 1 + P, D)
+    keep = selection.select_stage1(attn, hidden, dominant_k=4, diversity_m=0)
+    assert keep.shape == (1, 4)
