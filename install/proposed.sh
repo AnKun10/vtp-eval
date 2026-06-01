@@ -24,11 +24,20 @@ if ! command -v python >/dev/null 2>&1; then
     echo "[install/proposed] Created python -> python3 symlink"
 fi
 
-# 2. Force a torch build matching the host driver (cu121 works on driver >= 525,
-#    i.e. CUDA 12.0+). torch 2.1.2 is the version the original LLaVA repo targets.
+# 2. Force a torch build matching the host driver (cu121 works on any driver >=
+#    525 / CUDA 12.0+, including CUDA 13 hosts — NVIDIA drivers are backward
+#    compatible). Pick the torch version by the active Python: 2.1.2 (LLaVA's
+#    target) for py<=3.11, 2.2.2 for py3.12 (2.1.2 has no cp312 wheels).
+PYV=$(python -c 'import sys;print(sys.version_info.major*100+sys.version_info.minor)')
+if [ "$PYV" -ge 312 ]; then
+    TORCH_PKG="torch==2.2.2"; TV_PKG="torchvision==0.17.2"
+else
+    TORCH_PKG="torch==2.1.2"; TV_PKG="torchvision==0.16.2"
+fi
+echo "[install/proposed] python=$PYV -> $TORCH_PKG"
 pip uninstall -y torch torchvision triton 2>/dev/null || true
 pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cu121 \
-    "torch==2.1.2" "torchvision==0.16.2"
+    "$TORCH_PKG" "$TV_PKG"
 
 # 3. Clone the original LLaVA repo and install it WITHOUT deps (we pin
 #    torch/transformers ourselves). Relax LLaVA's hard version pins first.
