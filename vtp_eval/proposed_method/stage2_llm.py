@@ -54,9 +54,13 @@ def prune_after_layer_k(hidden_states, attn_k, position_ids, past_key_values,
     """Apply the Stage-2 prune after layer k (prefill only; caller guards seq_len>1).
 
     Returns (hidden_states, position_ids, attention_mask, past_key_values) for
-    layers k+1..L. attention_mask is a fresh additive causal mask for the reduced
-    length. If there is no text to score with at all, returns inputs unchanged
-    with attention_mask=None (caller keeps its existing mask).
+    layers k+1..L. The kept tokens are **re-indexed to contiguous positions**
+    (0..keep_len-1) and the KV cache is sliced to the kept tokens, so the pruned
+    sequence behaves as a fresh length-keep_len sequence. (Keeping the original
+    position ids overflows each later layer's RoPE cache, which is sized to the
+    reduced kv length.) attention_mask is a fresh additive causal mask for the
+    reduced length. If there is no text to score with at all, returns inputs
+    unchanged with attention_mask=None (caller keeps its existing mask).
     """
     vs = spans["vision_start"]            # [B]
     nv = spans["vision_len"]
@@ -73,13 +77,11 @@ def prune_after_layer_k(hidden_states, attn_k, position_ids, past_key_values,
         "so output_attentions returns real tensors")
     scores = text_to_vision_scores(attn_k, (vstart, vstart + nv), (instr_lo, instr_hi))
     keep = build_keep_index(scores, cfg.llm_keep_r2, vs, seq_len=S)   # [B, keep_len]
-    kl = keep.shape[1]
+    B, kl = keep.shape
     D = hidden_states.shape[-1]
     hidden_states = hidden_states.gather(1, keep[:, :, None].expand(-1, kl, D))
-    if position_ids is not None:
-        # 2D [B,S] -> per-sample gather; 1D [S] (shared) -> [B,kl] via advanced index
-        position_ids = position_ids.gather(1, keep) if position_ids.dim() == 2 \
-            else position_ids[keep]
+    # Contiguous positions for the reduced sequence (avoids RoPE-cache overflow).
+    position_ids = torch.arange(kl, device=hidden_states.device).unsqueeze(0).expand(B, kl)
     attention_mask = _make_causal_mask_like(hidden_states, dtype=hidden_states.dtype)
     if past_key_values is not None:
         legacy = past_key_values.to_legacy_cache() \
@@ -217,14 +219,15 @@ def _llama_forward_437(self, cfg, input_ids=None, attention_mask=None,
         # --- Stage 2: prune vision tokens after layer k (prefill only) ---
         spans = getattr(self, "_proposed_spans", None)
         if idx == cfg.pruned_layer and spans is not None and hidden_states.shape[1] > 1:
-            # past=None -> do NOT slice the cache (see docstring).
             _s_before = int(hidden_states.shape[1])
-            _hs, _pos, _mask, _ = prune_after_layer_k(
-                hidden_states, layer_outputs[1], position_ids, None, spans, cfg,
-                use_cache=False)
+            _hs, _pos, _mask, _pkv = prune_after_layer_k(
+                hidden_states, layer_outputs[1], position_ids, past_key_values, spans,
+                cfg, use_cache)
             hidden_states, position_ids = _hs, _pos
             if _mask is not None:
                 attention_mask = _mask
+            if _pkv is not None:
+                past_key_values = _pkv   # sliced cache -> decode positions stay in range
             # Persistent proof the prune fired (survives decode steps, unlike
             # _proposed_spans which the span recorder resets each decode token).
             self._proposed_last_prune = {"layer": idx, "seq_before": _s_before,

@@ -172,8 +172,9 @@ def test_prune_after_layer_k_reduces_sequence_and_cache():
         hidden, attn, position_ids, past, spans, cfg, use_cache=True)
     # keep = non-vision {0,1,5,6} + top-1 vision {3} = 5 tokens
     assert h2.shape == (B, 5, D)
-    assert pos2.tolist() == [[0, 1, 3, 5, 6]]
-    assert past2[0][0].shape == (B, nh, 5, hd)
+    # positions re-indexed to contiguous (0..keep_len-1) to avoid RoPE overflow
+    assert pos2.tolist() == [[0, 1, 2, 3, 4]]
+    assert past2[0][0].shape == (B, nh, 5, hd)   # cache sliced to kept tokens
     assert mask2.shape == (B, 1, 5, 5)
 
 
