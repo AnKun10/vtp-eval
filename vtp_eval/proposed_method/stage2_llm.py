@@ -27,6 +27,8 @@ def compute_spans(input_ids: torch.Tensor, image_token_index: int, r1: int) -> d
     scalar vision_len (= r1), and post-merge seq_len.
     """
     B, L = input_ids.shape
+    assert (input_ids == image_token_index).any(), \
+        "compute_spans called on input_ids with no image token"
     img_pos = (input_ids == image_token_index).float().argmax(dim=1)  # [B] first hit
     vision_start = img_pos
     instr_start = img_pos + r1
@@ -44,7 +46,7 @@ def _make_causal_mask_like(hidden_states: torch.Tensor, dtype) -> torch.Tensor:
     min_val = torch.finfo(dtype).min
     mask = torch.full((S, S), min_val, device=hidden_states.device, dtype=dtype)
     mask = torch.triu(mask, diagonal=1)
-    return mask[None, None, :, :].expand(B, 1, S, S)
+    return mask[None, None, :, :].expand(B, 1, S, S).contiguous()
 
 
 def prune_after_layer_k(hidden_states, attn_k, position_ids, past_key_values,
@@ -72,10 +74,11 @@ def prune_after_layer_k(hidden_states, attn_k, position_ids, past_key_values,
     D = hidden_states.shape[-1]
     hidden_states = hidden_states.gather(1, keep[:, :, None].expand(-1, kl, D))
     if position_ids is not None:
+        # 2D [B,S] -> per-sample gather; 1D [S] (shared) -> [B,kl] via advanced index
         position_ids = position_ids.gather(1, keep) if position_ids.dim() == 2 \
-            else position_ids[keep[0]].unsqueeze(0)
+            else position_ids[keep]
     attention_mask = _make_causal_mask_like(hidden_states, dtype=hidden_states.dtype)
-    if use_cache and past_key_values is not None:
+    if past_key_values is not None:
         legacy = past_key_values.to_legacy_cache() \
             if hasattr(past_key_values, "to_legacy_cache") else past_key_values
         legacy = slice_past_key_values(legacy, keep)
@@ -130,12 +133,18 @@ def _llama_forward_437(self, cfg, *args, **kw):
          - force attention at layer k: pass
            `output_attentions=output_attentions or (idx == cfg.pruned_layer)`
            into `decoder_layer(...)`.
-         - immediately AFTER `hidden_states = layer_outputs[0]`, insert:
+         - immediately AFTER `hidden_states = layer_outputs[0]`, insert (note the
+           mask guard: the no-text skip path returns _mask=None meaning "keep the
+           existing mask" — never overwrite attention_mask with None, or causal
+           masking is lost for layers k+1..L):
              spans = getattr(self, "_proposed_spans", None)
              if idx == cfg.pruned_layer and spans is not None and hidden_states.shape[1] > 1:
-                 hidden_states, position_ids, attention_mask, past_key_values = \\
-                     prune_after_layer_k(hidden_states, layer_outputs[1], position_ids,
-                                         past_key_values, spans, cfg, use_cache)
+                 _hs, _pos, _mask, _pkv = prune_after_layer_k(
+                     hidden_states, layer_outputs[1], position_ids,
+                     past_key_values, spans, cfg, use_cache)
+                 hidden_states, position_ids, past_key_values = _hs, _pos, _pkv
+                 if _mask is not None:
+                     attention_mask = _mask
       4. Verify with `tests/test_proposed_smoke.py -m slow`.
     """
     raise NotImplementedError(
