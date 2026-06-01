@@ -64,4 +64,16 @@ pip install --no-cache-dir \
 # 5. Install vtp-eval editable so vtp_eval.proposed_method resolves.
 pip install -e . --no-deps
 
+# 6. lmms-eval benchmark harness (pin v0.5 — compatible with transformers 4.37.2).
+#    --no-deps so it doesn't move our torch/transformers pins; add its runtime deps.
+#    Toggle off with INSTALL_LMMS=0 when only the method (not eval) is needed.
+if [ "${INSTALL_LMMS:-1}" = "1" ]; then
+    LMMS_DIR="$WORKSPACE/lmms-eval"
+    [ -d "$LMMS_DIR" ] || git clone https://github.com/EvolvingLMMs-Lab/lmms-eval.git "$LMMS_DIR"
+    ( cd "$LMMS_DIR" && git checkout v0.5 )
+    pip install -e "$LMMS_DIR" --no-deps
+    pip install --no-cache-dir sqlitedict "datasets>=2.16,<2.21" tenacity \
+        pytablewriter sacrebleu evaluate hf_transfer
+fi
+
 echo "[install/proposed] done. transformers=$(python -c 'import transformers;print(transformers.__version__)')"

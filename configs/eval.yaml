@@ -1,0 +1,11 @@
+# configs/eval.yaml — benchmark runs for the proposed method vs baseline.
+model_base: liuhaotian/llava-v1.5-7b
+common_args: { attn_implementation: eager }   # proposed needs eager; baseline ok with it
+tasks: [pope]                                  # add gqa/textvqa/mme/... here
+batch_size: 1                                  # clean per-sample timing; proposed assumes bs=1
+runs:
+  - { name: baseline,                 model: llava_baseline, model_args: {} }
+  - { name: proposed_R1-64_R2-37_k12, model: llava_proposed,
+      model_args: { dominant_k: 54, diversity_m: 10, pruned_layer: 12, llm_keep_r2: 37 } }
+  - { name: proposed_keeppos,         model: llava_proposed,
+      model_args: { dominant_k: 54, diversity_m: 10, pruned_layer: 12, llm_keep_r2: 37, keep_position_ids: true } }
