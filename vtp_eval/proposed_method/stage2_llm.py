@@ -68,6 +68,9 @@ def prune_after_layer_k(hidden_states, attn_k, position_ids, past_key_values,
     if instr_hi <= instr_lo:              # truly no text -> skip prune
         return hidden_states, position_ids, None, past_key_values
 
+    assert attn_k is not None, (
+        "layer-k attention is None — load the model with attn_implementation='eager' "
+        "so output_attentions returns real tensors")
     scores = text_to_vision_scores(attn_k, (vstart, vstart + nv), (instr_lo, instr_hi))
     keep = build_keep_index(scores, cfg.llm_keep_r2, vs, seq_len=S)   # [B, keep_len]
     kl = keep.shape[1]
