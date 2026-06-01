@@ -60,7 +60,7 @@ fields from your console screenshot, kept as-is:
 | **Template Name** | `VTP-Eval` |
 | **Template Description** | `PyTorch for Nvidia CUDA` |
 | **Image Path:Tag** | `vastai/pytorch` |
-| **Version Tag** | `[Automatic]` (`@vastai-automatic-tag`) |
+| **Version Tag** | **`2.1.2-cuda-12.1.1-py310-ipv2`** (recommended) — ships torch 2.1.2 + CUDA 12.1 + Python 3.10, exactly our stack, so the on-start **skips the torch download**. (`[Automatic]`/py3.12 also works but re-downloads torch.) |
 | **Docker Options** | `-p 1111:1111 -p 6006:6006 -p 8080:8080 -p 8384:8384 -p 72299:72299 -e OPEN_BUTTON_PORT=1111` |
 | **Ports** | `1111`, `6006`, `8080`, `8384`, `72299` (all TCP) |
 | **Launch Mode** | **Jupyter-python notebook + SSH** |
@@ -113,19 +113,24 @@ cd "$REPO"
 git fetch origin --prune && git checkout proposed-method \
     && git pull --ff-only origin proposed-method || echo "[warn] git update skipped"
 
-# Dedicated venv: the base image's torch lives in /venv/main (py3.12 nightly);
-# we build our own clean env so versions are deterministic.
-python3 -m venv /workspace/venv
-source /workspace/venv/bin/activate
+# Pick the Python env. If the base image already ships a compatible CUDA torch
+# (2.1/2.2) — e.g. the 2.1.2-cuda-12.1.1-py310 tag — reuse it so install skips
+# the slow ~757 MB torch download. Otherwise build a clean venv.
+if /venv/main/bin/python -c "import torch,sys; sys.exit(0 if (torch.__version__.startswith(('2.1.','2.2.')) and torch.version.cuda) else 1)" 2>/dev/null; then
+    VENV=/venv/main; echo "[onstart] reusing base image torch env: $VENV"
+else
+    python3 -m venv /workspace/venv; VENV=/workspace/venv; echo "[onstart] built fresh venv: $VENV"
+fi
+source "$VENV/bin/activate"
 python -m pip install -q -U pip wheel setuptools
 
-WORKSPACE=/workspace bash install/proposed.sh   # auto-picks torch by py version
+WORKSPACE=/workspace bash install/proposed.sh   # skips torch if already compatible
 pip install -q pytest "numpy<2"
 
-# Auto-activate venv + cd on interactive SSH login.
-grep -q '/workspace/venv/bin/activate' /root/.bashrc 2>/dev/null || {
+# Auto-activate the chosen env + cd on interactive SSH login.
+grep -q "source $VENV/bin/activate" /root/.bashrc 2>/dev/null || {
     echo 'export HF_HOME=/workspace/.cache/huggingface' >> /root/.bashrc
-    echo 'source /workspace/venv/bin/activate'          >> /root/.bashrc
+    echo "source $VENV/bin/activate"                     >> /root/.bashrc
     echo 'cd /workspace/vtp-eval'                        >> /root/.bashrc
 }
 
