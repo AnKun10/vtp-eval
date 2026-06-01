@@ -21,10 +21,12 @@ from vtp_eval.proposed_method import ProposedConfig, proposed_prune
 class LlavaProposed(LlavaPruningBase):
     def __init__(self, pretrained: str = "liuhaotian/llava-v1.5-7b",
                  dominant_k: int = 54, diversity_m: int = 10,
-                 pruned_layer: int = 12, llm_keep_r2: int = 37, **kw):
+                 pruned_layer: int = 12, llm_keep_r2: int = 37,
+                 keep_position_ids: bool = False, **kw):
         super().__init__(pretrained=pretrained, **kw)
         cfg = ProposedConfig(int(dominant_k), int(diversity_m),
-                             int(pruned_layer), int(llm_keep_r2))
+                             int(pruned_layer), int(llm_keep_r2),
+                             keep_position_ids=bool(keep_position_ids))
         n_layers = self._model.config.num_hidden_layers
         cfg.validate(num_llm_layers=n_layers)
         self._model = proposed_prune(self._model, cfg)

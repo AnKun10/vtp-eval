@@ -178,6 +178,30 @@ def test_prune_after_layer_k_reduces_sequence_and_cache():
     assert mask2.shape == (B, 1, 5, 5)
 
 
+def test_prune_after_layer_k_keep_position_ids_mode():
+    from vtp_eval.proposed_method import stage2_llm
+    from vtp_eval.proposed_method.config import ProposedConfig
+    B, H, S, D = 1, 2, 7, 8
+    attn = torch.zeros(B, H, S, S)
+    attn[:, :, 5, 3] = 1.0
+    attn[:, :, 6, 3] = 1.0
+    hidden = torch.randn(B, S, D)
+    position_ids = torch.arange(S).unsqueeze(0)
+    nh, hd = 2, 4
+    past = ((torch.randn(B, nh, S, hd), torch.randn(B, nh, S, hd)),)
+    spans = {"vision_start": torch.tensor([2]), "vision_len": 3,
+             "instr_start": torch.tensor([5]), "seq_len": S}
+    cfg = ProposedConfig(dominant_k=2, diversity_m=1, pruned_layer=0, llm_keep_r2=1,
+                         keep_position_ids=True)
+    h2, pos2, mask2, past2 = stage2_llm.prune_after_layer_k(
+        hidden, attn, position_ids, past, spans, cfg, use_cache=True)
+    # keep_position_ids=True -> kept tokens retain ORIGINAL positions (the kept
+    # absolute indices), NOT contiguous.
+    assert h2.shape == (B, 5, D)
+    assert pos2.tolist() == [[0, 1, 3, 5, 6]]
+    assert past2[0][0].shape == (B, nh, 5, hd)
+
+
 def test_prune_after_layer_k_no_instruction_falls_back_to_preimage():
     from vtp_eval.proposed_method import stage2_llm
     from vtp_eval.proposed_method.config import ProposedConfig

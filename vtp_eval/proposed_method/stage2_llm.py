@@ -80,8 +80,15 @@ def prune_after_layer_k(hidden_states, attn_k, position_ids, past_key_values,
     B, kl = keep.shape
     D = hidden_states.shape[-1]
     hidden_states = hidden_states.gather(1, keep[:, :, None].expand(-1, kl, D))
-    # Contiguous positions for the reduced sequence (avoids RoPE-cache overflow).
-    position_ids = torch.arange(kl, device=hidden_states.device).unsqueeze(0).expand(B, kl)
+    if getattr(cfg, "keep_position_ids", False):
+        # SparseVLM-v2 "Keep Position ID": the kept tokens retain their ORIGINAL
+        # positions (== their absolute indices in `keep`). Requires the RoPE cache
+        # to be enlarged (install_full_rotary) so cos[position_ids] stays in range.
+        position_ids = keep.to(torch.long)
+    else:
+        # Contiguous positions for the reduced sequence (avoids RoPE-cache overflow
+        # without any attention/rotary patch).
+        position_ids = torch.arange(kl, device=hidden_states.device).unsqueeze(0).expand(B, kl)
     attention_mask = _make_causal_mask_like(hidden_states, dtype=hidden_states.dtype)
     if past_key_values is not None:
         legacy = past_key_values.to_legacy_cache() \
@@ -116,6 +123,33 @@ def install_span_recorder(model, cfg):
                     labels, images, image_sizes, *args, **kw)
 
     model.prepare_inputs_labels_for_multimodal = wrapped
+
+
+_ORIG_ROTARY_FORWARD = None
+
+
+def install_full_rotary(min_seqlen):
+    """Patch ``LlamaRotaryEmbedding.forward`` (transformers 4.37.2) to always
+    build/return cos/sin covering at least ``min_seqlen`` positions.
+
+    Needed only for ``keep_position_ids=True`` (SparseVLM-v2): the kept tokens
+    keep their ORIGINAL (possibly large, gapped) position ids, but stock 4.37.2
+    sizes each layer's RoPE cache to the reduced kv length, so ``cos[position_ids]``
+    overflows. Bumping the requested ``seq_len`` to ``max_position_embeddings``
+    makes the returned cos/sin large enough. Idempotent; transformers import
+    deferred so this module stays portable.
+    """
+    from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
+    global _ORIG_ROTARY_FORWARD
+    if _ORIG_ROTARY_FORWARD is None:
+        _ORIG_ROTARY_FORWARD = LlamaRotaryEmbedding.forward
+    orig = _ORIG_ROTARY_FORWARD
+
+    def forward(self, x, seq_len=None):
+        seq_len = max(int(seq_len) if seq_len is not None else 0, int(min_seqlen))
+        return orig(self, x, seq_len=seq_len)
+
+    LlamaRotaryEmbedding.forward = forward
 
 
 def make_llama_forward(cfg):
@@ -195,10 +229,14 @@ def _llama_forward_437(self, cfg, input_ids=None, attention_mask=None,
     if attention_mask is not None and attention_mask.dim() == 2 \
             and attention_mask.shape[-1] != past_key_values_length + seq_length:
         attention_mask = None
-        _dev = input_ids.device if input_ids is not None else inputs_embeds.device
-        position_ids = torch.arange(
-            past_key_values_length, seq_length + past_key_values_length,
-            dtype=torch.long, device=_dev).unsqueeze(0)
+        # V1 (contiguous) decode: re-derive position relative to the pruned cache.
+        # keep_position_ids=True: leave generate's original-based position_ids
+        # (the enlarged RoPE cache from install_full_rotary keeps it in range).
+        if not getattr(cfg, "keep_position_ids", False):
+            _dev = input_ids.device if input_ids is not None else inputs_embeds.device
+            position_ids = torch.arange(
+                past_key_values_length, seq_length + past_key_values_length,
+                dtype=torch.long, device=_dev).unsqueeze(0)
 
     if getattr(self, "_use_flash_attention_2", False):
         attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None

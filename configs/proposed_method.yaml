@@ -31,3 +31,9 @@ runs:
   - name: proposed_div0   # ablation: dominant only, no diversity context
     model: llava_proposed
     model_args: { dominant_k: 64, diversity_m: 0, pruned_layer: 12, llm_keep_r2: 37 }
+
+  # SparseVLM-v2 "Keep Position ID" RoPE mode (keeps original positions; needs the
+  # enlarged RoPE cache). Default keep_position_ids=false (validated contiguous mode).
+  - name: proposed_keeppos
+    model: llava_proposed
+    model_args: { dominant_k: 54, diversity_m: 10, pruned_layer: 12, llm_keep_r2: 37, keep_position_ids: true }
