@@ -85,41 +85,49 @@ fields from your console screenshot, kept as-is:
 
 ## 2. On-start script (paste into the template's "On-start Script" box)
 
-This is the proposed-method counterpart of `scripts/vast/onstart.sh`. It clones
-the repo, checks out `proposed-method`, runs `install/proposed.sh` (original
-LLaVA + transformers 4.37.2), and sanity-checks. **Idempotent** — safe on every
-boot. It does **not** auto-sync `_llama_forward_437` (that is a deliberate step,
-§5).
+**This is the on-start WRAPPER — do NOT paste `install/proposed.sh` here.**
+`install/proposed.sh` is the *install step* (run from the repo root); on its own
+it never clones the repo and aborts on a Python-3.12 image. This wrapper clones
+the repo (checkout `proposed-method`), builds a **dedicated venv** (so versions
+are deterministic and the base image's `/venv/main` is left untouched), runs
+`install/proposed.sh` inside it (which auto-picks torch 2.2.2 on py3.12), and
+auto-activates the venv on SSH login. **Idempotent.** It does **not** auto-sync
+`_llama_forward_437` (that is a deliberate step, §5).
+
+> On-start runs **once at first boot**. If you change it on a running instance
+> it will not re-run — Destroy and rent a fresh instance.
 
 ```bash
 #!/bin/bash
-# Vast.ai onstart for the proposed two-stage pruning method via vtp-eval.
-set -euo pipefail
-
-LOG=/workspace/onstart.log
+set -uo pipefail   # NOT -e: a single non-fatal step shouldn't abort the boot
 mkdir -p /workspace
-exec > >(tee -a "$LOG") 2>&1
-echo "=== onstart (proposed-method) started: $(date -Iseconds) ==="
+exec > >(tee -a /workspace/onstart.log) 2>&1
+echo "=== onstart (proposed-method) $(date -Iseconds) ==="
 
 export HF_HOME=/workspace/.cache/huggingface
 mkdir -p "$HF_HOME"
 
 REPO=/workspace/vtp-eval
-BRANCH=proposed-method
-if [ ! -d "$REPO" ]; then
-    git clone https://github.com/AnKun10/vtp-eval.git "$REPO"
-fi
+[ -d "$REPO" ] || git clone -b proposed-method https://github.com/AnKun10/vtp-eval.git "$REPO"
 cd "$REPO"
-git fetch origin --prune || echo "[warn] git fetch skipped"
-git checkout "$BRANCH"
-git pull --ff-only origin "$BRANCH" || echo "[warn] git pull skipped"
+git fetch origin --prune && git checkout proposed-method \
+    && git pull --ff-only origin proposed-method || echo "[warn] git update skipped"
 
-bash install/proposed.sh
+# Dedicated venv: the base image's torch lives in /venv/main (py3.12 nightly);
+# we build our own clean env so versions are deterministic.
+python3 -m venv /workspace/venv
+source /workspace/venv/bin/activate
+python -m pip install -q -U pip wheel setuptools
 
-# Persist HF cache + auto-cd for interactive SSH sessions.
-grep -q 'HF_HOME=/workspace/.cache/huggingface' /root/.bashrc 2>/dev/null \
-    || echo 'export HF_HOME=/workspace/.cache/huggingface' >> /root/.bashrc
-grep -q "cd $REPO" /root/.bashrc 2>/dev/null || echo "cd $REPO" >> /root/.bashrc
+WORKSPACE=/workspace bash install/proposed.sh   # auto-picks torch by py version
+pip install -q pytest "numpy<2"
+
+# Auto-activate venv + cd on interactive SSH login.
+grep -q '/workspace/venv/bin/activate' /root/.bashrc 2>/dev/null || {
+    echo 'export HF_HOME=/workspace/.cache/huggingface' >> /root/.bashrc
+    echo 'source /workspace/venv/bin/activate'          >> /root/.bashrc
+    echo 'cd /workspace/vtp-eval'                        >> /root/.bashrc
+}
 
 nvidia-smi -L
 python -c "import torch; assert torch.cuda.is_available(); print('GPU OK:', torch.cuda.get_device_name(0))"
@@ -127,6 +135,9 @@ python -c "import transformers; print('transformers', transformers.__version__)"
 python -c "import llava; from vtp_eval.proposed_method import proposed_prune; print('proposed_method import OK')"
 echo "=== onstart finished: $(date -Iseconds) ==="
 ```
+
+> After SSH login the venv auto-activates (via `.bashrc`). For non-interactive
+> commands, prefix with `source /workspace/venv/bin/activate &&`.
 
 ---
 
