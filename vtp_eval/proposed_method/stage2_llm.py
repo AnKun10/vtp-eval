@@ -187,12 +187,18 @@ def _llama_forward_437(self, cfg, input_ids=None, attention_mask=None,
         inputs_embeds = self.embed_tokens(input_ids)
 
     # Stage-2 pruning shrank the KV cache, but generate() still passes a 2D
-    # attention_mask sized to the ORIGINAL (unpruned) length. If it no longer
-    # matches the (pruned) cache length, drop it and let a clean causal mask be
-    # rebuilt (batch_size=1 inference: no padding to preserve).
+    # attention_mask AND position_ids sized to the ORIGINAL (unpruned) length.
+    # If the mask no longer matches the (pruned) cache length, drop it and
+    # recompute position_ids relative to the pruned cache, so the new token's
+    # RoPE position stays within the (reduced) rotary range.
+    # (batch_size=1 inference: no padding to preserve.)
     if attention_mask is not None and attention_mask.dim() == 2 \
             and attention_mask.shape[-1] != past_key_values_length + seq_length:
         attention_mask = None
+        _dev = input_ids.device if input_ids is not None else inputs_embeds.device
+        position_ids = torch.arange(
+            past_key_values_length, seq_length + past_key_values_length,
+            dtype=torch.long, device=_dev).unsqueeze(0)
 
     if getattr(self, "_use_flash_attention_2", False):
         attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
