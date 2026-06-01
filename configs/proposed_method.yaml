@@ -1,0 +1,33 @@
+# configs/proposed_method.yaml
+# Proposed two-stage visual-token pruning for LLaVA-1.5-7B.
+# Stage 1 (vision tower): dominant_k CLS-attention tokens + diversity_m
+#   farthest-point context tokens  -> R1 = dominant_k + diversity_m.
+# Stage 2 (LLM layer `pruned_layer`): keep llm_keep_r2 vision tokens by
+#   instruction->vision attention.
+model_base: liuhaotian/llava-v1.5-7b
+
+common_args:
+  attn_implementation: eager   # required: Stage 2 reads layer-k attention
+
+defaults:
+  dominant_k:   54
+  diversity_m:  10
+  pruned_layer: 12
+  llm_keep_r2:  37
+
+runs:
+  - name: proposed_R1-64_R2-37_k12
+    model: llava_proposed
+    model_args: { dominant_k: 54, diversity_m: 10, pruned_layer: 12, llm_keep_r2: 37 }
+
+  - name: proposed_R1-128_R2-37_k12
+    model: llava_proposed
+    model_args: { dominant_k: 108, diversity_m: 20, pruned_layer: 12, llm_keep_r2: 37 }
+
+  - name: proposed_k8
+    model: llava_proposed
+    model_args: { dominant_k: 54, diversity_m: 10, pruned_layer: 8, llm_keep_r2: 37 }
+
+  - name: proposed_div0   # ablation: dominant only, no diversity context
+    model: llava_proposed
+    model_args: { dominant_k: 64, diversity_m: 0, pruned_layer: 12, llm_keep_r2: 37 }
