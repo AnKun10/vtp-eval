@@ -72,3 +72,60 @@ def select_stage1(attn_penult: torch.Tensor, hidden_penult: torch.Tensor,
         keep = dominant
 
     return keep.sort(dim=1).values
+
+
+def text_to_vision_scores(attn_layer: torch.Tensor,
+                          vision_slice: tuple[int, int],
+                          instr_slice: tuple[int, int]) -> torch.Tensor:
+    """Importance = attention each vision token receives from instruction tokens.
+
+    attn_layer:   [B, H, S, S] attention from the pruned LLM layer.
+    vision_slice: (start, end) exclusive-end of the vision-token block.
+    instr_slice:  (start, end) exclusive-end of the post-image instruction tokens.
+    Returns: [B, Nv] mean over heads and instruction rows.
+    """
+    vs, ve = vision_slice
+    is_, ie = instr_slice
+    sub = attn_layer[:, :, is_:ie, vs:ve]   # [B, H, Ni, Nv]
+    return sub.mean(dim=(1, 2))             # [B, Nv]
+
+
+def build_keep_index(scores: torch.Tensor, r2: int,
+                     vision_start: torch.Tensor, seq_len: int) -> torch.Tensor:
+    """Keep ALL non-vision tokens + the top-``r2`` vision tokens.
+
+    scores:       [B, Nv] vision-token importance.
+    vision_start: [B] absolute start position of the vision block per sample.
+    Returns: [B, seq_len - Nv + r2] sorted absolute indices.
+    Assumes the vision block is contiguous and length Nv is the same across B.
+    """
+    B, Nv = scores.shape
+    device = scores.device
+    top_local = scores.topk(r2, dim=1).indices            # [B, r2]
+    keep_rows = []
+    for b in range(B):
+        vstart = int(vision_start[b])
+        vis_abs = top_local[b] + vstart
+        non_vis = torch.cat([
+            torch.arange(0, vstart, device=device),
+            torch.arange(vstart + Nv, seq_len, device=device),
+        ])
+        keep_rows.append(torch.cat([non_vis, vis_abs]).sort().values)
+    return torch.stack(keep_rows, dim=0)
+
+
+def slice_past_key_values(past_key_values, keep_index: torch.Tensor):
+    """Gather the sequence dimension of a legacy past_key_values tuple.
+
+    Legacy format: tuple(per layer) of (key, value), each
+    [B, n_heads, seq, head_dim]. keep_index: [B, keep_len].
+    Returns a new tuple in the same format with seq sliced to keep_len.
+    (DynamicCache: see stage2_llm.py, which converts to legacy before calling.)
+    """
+    keep_len = keep_index.shape[1]
+    out = []
+    for key, value in past_key_values:
+        B, nh, _, hd = key.shape
+        idx = keep_index[:, None, :, None].expand(B, nh, keep_len, hd)
+        out.append((key.gather(2, idx), value.gather(2, idx)))
+    return tuple(out)
