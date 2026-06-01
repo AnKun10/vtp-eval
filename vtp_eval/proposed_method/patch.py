@@ -33,4 +33,5 @@ def proposed_prune(model, cfg):
     LlamaModel.forward = stage2_llm.make_llama_forward(cfg)
 
     model._proposed_cfg = cfg
+    model._proposed_last_prune = None   # set by Stage-2 forward when the prune fires
     return model

@@ -214,12 +214,17 @@ def _llama_forward_437(self, cfg, input_ids=None, attention_mask=None,
         spans = getattr(self, "_proposed_spans", None)
         if idx == cfg.pruned_layer and spans is not None and hidden_states.shape[1] > 1:
             # past=None -> do NOT slice the cache (see docstring).
+            _s_before = int(hidden_states.shape[1])
             _hs, _pos, _mask, _ = prune_after_layer_k(
                 hidden_states, layer_outputs[1], position_ids, None, spans, cfg,
                 use_cache=False)
             hidden_states, position_ids = _hs, _pos
             if _mask is not None:
                 attention_mask = _mask
+            # Persistent proof the prune fired (survives decode steps, unlike
+            # _proposed_spans which the span recorder resets each decode token).
+            self._proposed_last_prune = {"layer": idx, "seq_before": _s_before,
+                                         "seq_after": int(hidden_states.shape[1])}
 
         if output_attentions:
             all_self_attns += (layer_outputs[1],)
