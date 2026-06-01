@@ -19,7 +19,7 @@ generations is well under **$0.50** total.
 | Step | Needs |
 |------|-------|
 | Stage-1/2 unit tests (`-m "not slow"`) | nothing GPU — already pass locally |
-| **Method end-to-end** (generation) | this runbook: install + the `_llama_forward_437` sync (§5) |
+| **Method end-to-end** (generation) | this runbook: rent with the on-start (install is automatic) |
 | Benchmark across configs (`configs/proposed_method.yaml`) | the archived lmms-eval harness restored under `eval/` — **not yet done**, out of scope here |
 
 So this runbook gets you to a **working generation + the `@slow` smoke test**.
@@ -91,8 +91,9 @@ it never clones the repo and aborts on a Python-3.12 image. This wrapper clones
 the repo (checkout `proposed-method`), builds a **dedicated venv** (so versions
 are deterministic and the base image's `/venv/main` is left untouched), runs
 `install/proposed.sh` inside it (which auto-picks torch 2.2.2 on py3.12), and
-auto-activates the venv on SSH login. **Idempotent.** It does **not** auto-sync
-`_llama_forward_437` (that is a deliberate step, §5).
+auto-activates the venv on SSH login. **Idempotent.** The transformers-4.37.2
+Stage-2 forward is already committed in the repo (§5), so no manual sync is
+needed — after the on-start finishes the method is ready to run.
 
 > On-start runs **once at first boot**. If you change it on a running instance
 > it will not re-run — Destroy and rent a fresh instance.
@@ -174,63 +175,22 @@ bash /workspace/vtp-eval/scripts/vast/onstart.sh   # or paste the §2 block into
 
 ---
 
-## 5. Sync `_llama_forward_437` (the one Vast-only step)
+## 5. (Already done) The transformers-4.37.2 forward is committed
 
-Stage 2 replaces `LlamaModel.forward` with a copy of **transformers 4.37.2**'s
-forward that has the prune spliced in. That verbatim body cannot be shipped from
-a dev box (it is version-pinned), so `vtp_eval/proposed_method/stage2_llm.py`
-ships a stub that raises `NotImplementedError`. Sync it now, on the instance
-where transformers 4.37.2 is installed.
+Stage 2 replaces `LlamaModel.forward` with transformers **4.37.2**'s forward +
+the prune splice. This is **already implemented and committed** in
+`vtp_eval/proposed_method/stage2_llm.py::_llama_forward_437` (validated on a 22 GB
+RTX 2080 Ti) — no manual sync needed. It handles the mid-layer subtleties:
+contiguous position re-indexing + KV-cache slicing (so RoPE positions stay in
+range), and rebuilding the stale `attention_mask`/`position_ids` that `generate()`
+passes after the cache shrinks.
 
-**5.1 — print the installed forward:**
-```bash
-cd /workspace/vtp-eval
-python - <<'PY'
-import inspect
-from transformers.models.llama.modeling_llama import LlamaModel
-print(inspect.getsource(LlamaModel.forward))
-PY
-```
-
-**5.2 — edit `vtp_eval/proposed_method/stage2_llm.py`:** replace the body of
-`_llama_forward_437(self, cfg, *args, **kw)` with the printed forward, keeping
-the `(self, cfg, *args, **kw)` signature (bind the original kwargs at the top:
-`input_ids=kw.get("input_ids", args[0] if args else None)`, etc. — easiest is to
-copy 4.37.2's exact parameter list in place of `*args, **kw`).
-
-Then make **two** edits inside the decoder-layer loop:
-
-1. If the loop is `for decoder_layer in self.layers:`, change it to
-   `for idx, decoder_layer in enumerate(self.layers):` so `idx` is available.
-2. Force attention at layer `k` — change the `output_attentions=output_attentions`
-   argument of the `decoder_layer(...)` call to:
-   ```python
-   output_attentions=output_attentions or (idx == cfg.pruned_layer),
-   ```
-3. Immediately **after** `hidden_states = layer_outputs[0]`, insert (note the
-   mask guard — the no-text skip returns `_mask=None` meaning "keep the existing
-   mask"; overwriting `attention_mask` with `None` would drop causal masking for
-   layers `k+1..L`):
-   ```python
-   spans = getattr(self, "_proposed_spans", None)
-   if idx == cfg.pruned_layer and spans is not None and hidden_states.shape[1] > 1:
-       from vtp_eval.proposed_method.stage2_llm import prune_after_layer_k
-       _hs, _pos, _mask, _pkv = prune_after_layer_k(
-           hidden_states, layer_outputs[1], position_ids,
-           past_key_values, spans, cfg, use_cache)
-       hidden_states, position_ids, past_key_values = _hs, _pos, _pkv
-       if _mask is not None:
-           attention_mask = _mask
-   ```
-   (`prune_after_layer_k`, `text_to_vision_scores`, etc. are already defined in
-   the same module, so a local import is unnecessary if you splice inside that
-   file — shown here only for clarity.)
-
-The exact procedure is also written in the docstring of `_llama_forward_437`.
-
-> If you'd rather version-control the synced forward, commit it on the
-> `proposed-method` branch from the instance (or copy it back and commit
-> locally) so future rents pick it up via `git pull` and skip this step.
+> **Version caveat:** the body is pinned to transformers 4.37.2 (matched by the
+> recommended image tag). If you run on a different transformers version and hit
+> a forward mismatch, re-sync from `inspect.getsource(LlamaModel.forward)` and
+> re-apply the splice (force `output_attentions` at layer `k`; call
+> `prune_after_layer_k` right after `hidden_states = layer_outputs[0]`). The
+> procedure is documented in the `_llama_forward_437` docstring.
 
 ---
 
@@ -313,7 +273,7 @@ TextVQA, …) per run in `configs/proposed_method.yaml`.
 
 | Symptom | Fix |
 |---------|-----|
-| `NotImplementedError: _llama_forward_437 must be synced …` | You skipped §5. Sync the 4.37.2 forward. |
+| Forward shape/arg error in `_llama_forward_437` | transformers != 4.37.2. Re-sync the forward per §5's version caveat, or pin the recommended image tag. |
 | `AssertionError: layer-k attention is None … eager` | Model wasn't loaded with `attn_implementation="eager"`. Reload with it. |
 | `onstart.log` ends before "onstart finished" | Re-run `bash install/proposed.sh`; it's idempotent. |
 | `git checkout proposed-method` fails on the box | You didn't push the branch (Prereq 0.1). Push it, then re-run on-start. |
