@@ -138,3 +138,15 @@ def test_make_forward_batched_and_list_branches():
     out_list = fwd(stub, [torch.randn(3, 4, 4), torch.randn(3, 4, 4)])
     assert isinstance(out_list, list) and len(out_list) == 2
     assert out_list[0].shape == (1, 8, D)
+
+
+def test_compute_spans_from_image_token_mask():
+    from vtp_eval.proposed_method import stage2_llm
+    # input_ids with IMAGE_TOKEN_INDEX (-200) at position 3, prompt len 6.
+    # After merge with R1=4 image features, vision block = [3, 7), instr = [7, 10).
+    input_ids = torch.tensor([[1, 100, 101, -200, 200, 201]])  # pre-merge ids
+    spans = stage2_llm.compute_spans(input_ids, image_token_index=-200, r1=4)
+    assert spans["vision_start"].tolist() == [3]
+    assert spans["vision_len"] == 4
+    assert spans["instr_start"].tolist() == [7]   # right after the 4 image tokens
+    assert spans["seq_len"] == 6 - 1 + 4          # placeholder replaced by R1 tokens
