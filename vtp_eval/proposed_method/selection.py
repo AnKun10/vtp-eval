@@ -20,12 +20,14 @@ def farthest_point_diversity(feats: torch.Tensor, seed_idx: torch.Tensor,
                              m: int) -> torch.Tensor:
     """Greedy max-min (farthest-point) selection of ``m`` new tokens.
 
-    feats:    [B, P, D], assumed L2-normalized (so dot product == cosine).
-    seed_idx: [B, k] indices already selected (the dominant set).
+    feats:    [B, P, D], floating-point and L2-normalized (dot == cosine).
+    seed_idx: [B, k] indices already selected (the dominant set; k >= 1 —
+              callers pass the dominant top-k from cls_topk_dominant).
     Returns:  [B, m] newly selected indices, disjoint from the seed set and
               from each other, each chosen to minimize its maximum cosine
               similarity to the already-selected set.
     """
+    assert feats.is_floating_point(), "feats must be a floating-point tensor"
     B, P, D = feats.shape
     device = feats.device
     dtype = feats.dtype
@@ -100,6 +102,7 @@ def build_keep_index(scores: torch.Tensor, r2: int,
     Assumes the vision block is contiguous and length Nv is the same across B.
     """
     B, Nv = scores.shape
+    assert vision_start.shape[0] == B, "vision_start length must equal batch size"
     device = scores.device
     top_local = scores.topk(r2, dim=1).indices            # [B, r2]
     keep_rows = []
@@ -114,7 +117,7 @@ def build_keep_index(scores: torch.Tensor, r2: int,
     return torch.stack(keep_rows, dim=0)
 
 
-def slice_past_key_values(past_key_values, keep_index: torch.Tensor):
+def slice_past_key_values(past_key_values, keep_index: torch.Tensor) -> tuple:
     """Gather the sequence dimension of a legacy past_key_values tuple.
 
     Legacy format: tuple(per layer) of (key, value), each

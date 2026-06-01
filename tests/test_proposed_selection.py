@@ -12,6 +12,7 @@ def test_cls_topk_dominant_picks_highest():
 
 
 def test_diversity_excludes_seed_indices():
+    torch.manual_seed(0)
     feats = F.normalize(torch.randn(1, 10, 8), dim=-1)
     seed = torch.tensor([[0, 1]])
     out = selection.farthest_point_diversity(feats, seed, m=3)
@@ -31,7 +32,7 @@ def test_diversity_prefers_dissimilar_token():
 
 
 def test_select_stage1_shapes_and_sorted():
-    B, H, P, Dh, D = 2, 4, 20, 6, 16
+    B, H, P, D = 2, 4, 20, 16
     attn = torch.rand(B, H, 1 + P, 1 + P)
     hidden = torch.randn(B, 1 + P, D)
     keep = selection.select_stage1(attn, hidden, dominant_k=5, diversity_m=3)
