@@ -150,3 +150,50 @@ def test_compute_spans_from_image_token_mask():
     assert spans["vision_len"] == 4
     assert spans["instr_start"].tolist() == [7]   # right after the 4 image tokens
     assert spans["seq_len"] == 6 - 1 + 4          # placeholder replaced by R1 tokens
+
+
+def test_prune_after_layer_k_reduces_sequence_and_cache():
+    from vtp_eval.proposed_method import stage2_llm
+    from vtp_eval.proposed_method.config import ProposedConfig
+    B, H, S, D = 1, 2, 7, 8
+    # vision block [2,5) len 3, instruction rows [5,7); make vision col 3 win.
+    attn = torch.zeros(B, H, S, S)
+    attn[:, :, 5, 3] = 1.0
+    attn[:, :, 6, 3] = 1.0
+    hidden = torch.randn(B, S, D)
+    position_ids = torch.arange(S).unsqueeze(0)
+    nh, hd = 2, 4
+    layer = (torch.randn(B, nh, S, hd), torch.randn(B, nh, S, hd))
+    past = (layer, layer)
+    spans = {"vision_start": torch.tensor([2]), "vision_len": 3,
+             "instr_start": torch.tensor([5]), "seq_len": S}
+    cfg = ProposedConfig(dominant_k=2, diversity_m=1, pruned_layer=0, llm_keep_r2=1)
+    h2, pos2, mask2, past2 = stage2_llm.prune_after_layer_k(
+        hidden, attn, position_ids, past, spans, cfg, use_cache=True)
+    # keep = non-vision {0,1,5,6} + top-1 vision {3} = 5 tokens
+    assert h2.shape == (B, 5, D)
+    assert pos2.tolist() == [[0, 1, 3, 5, 6]]
+    assert past2[0][0].shape == (B, nh, 5, hd)
+    assert mask2.shape == (B, 1, 5, 5)
+
+
+def test_prune_after_layer_k_no_instruction_falls_back_to_preimage():
+    from vtp_eval.proposed_method import stage2_llm
+    from vtp_eval.proposed_method.config import ProposedConfig
+    B, H, S, D = 1, 2, 6, 8
+    # vision block [2,6) len 4 reaches end -> NO post-image instruction tokens.
+    # Fallback uses pre-image text rows [0,2). Make vision col 2 win there.
+    attn = torch.zeros(B, H, S, S)
+    attn[:, :, 0, 2] = 1.0
+    attn[:, :, 1, 2] = 1.0
+    hidden = torch.randn(B, S, D)
+    position_ids = torch.arange(S).unsqueeze(0)
+    spans = {"vision_start": torch.tensor([2]), "vision_len": 4,
+             "instr_start": torch.tensor([6]), "seq_len": S}
+    cfg = ProposedConfig(dominant_k=2, diversity_m=2, pruned_layer=0, llm_keep_r2=1)
+    h2, pos2, mask2, past2 = stage2_llm.prune_after_layer_k(
+        hidden, attn, position_ids, None, spans, cfg, use_cache=False)
+    # non-vision {0,1} + top-1 vision (local 0 -> abs 2) = {0,1,2}
+    assert pos2.tolist() == [[0, 1, 2]]
+    assert h2.shape == (B, 3, D)
+    assert past2 is None
