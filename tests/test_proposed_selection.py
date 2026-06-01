@@ -229,3 +229,13 @@ def test_install_span_recorder_stashes_spans_and_delegates():
     # text-only (no image token) -> spans None
     m.prepare_inputs_labels_for_multimodal(torch.tensor([[1, 2, 3]]), None, None, None, None, None)
     assert m._proposed_spans is None
+
+
+def test_package_exports_are_importable():
+    import vtp_eval.proposed_method as pm
+    assert hasattr(pm, "proposed_prune") and callable(pm.proposed_prune)
+    assert hasattr(pm, "ProposedConfig")
+    # proposed_prune defers the llava import to call time, so importing the
+    # package must NOT require llava/transformers-llama to be installed.
+    assert pm.ProposedConfig(dominant_k=54, diversity_m=10,
+                             pruned_layer=12, llm_keep_r2=37).r1 == 64
