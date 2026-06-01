@@ -33,5 +33,7 @@ def proposed_prune(model, cfg):
     LlamaModel.forward = stage2_llm.make_llama_forward(cfg)
 
     model._proposed_cfg = cfg
-    model._proposed_last_prune = None   # set by Stage-2 forward when the prune fires
+    # _proposed_last_prune is written by the Stage-2 forward on the INNER model
+    # (its `self`); initialize it there so readers find the attribute.
+    getattr(model, "model", model)._proposed_last_prune = None
     return model

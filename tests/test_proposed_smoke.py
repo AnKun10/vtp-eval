@@ -39,13 +39,13 @@ def test_proposed_generates_and_prunes():
             images=image_tensor.unsqueeze(0).half().to(model.device),
             max_new_tokens=16, do_sample=False)
     text = tok.decode(output_ids[0], skip_special_tokens=True)
+    lp = model.model._proposed_last_prune   # written by the inner-model forward
     print(f"\n[smoke] generated: {text!r}")
-    print(f"[smoke] last prune: {model._proposed_last_prune}")
+    print(f"[smoke] last prune: {lp}")
 
     assert text.strip(), "model produced empty output"
     # Stage-2 prune must have fired during prefill, dropping (R1 - R2) vision
     # tokens from the sequence (vision_len R1 -> R2; non-vision tokens kept).
-    lp = model._proposed_last_prune
     assert lp is not None, "Stage 2 prune did not fire (span recorder / forward not wired)"
     assert lp["layer"] == cfg.pruned_layer
     assert lp["seq_before"] - lp["seq_after"] == cfg.r1 - cfg.llm_keep_r2

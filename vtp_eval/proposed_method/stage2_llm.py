@@ -99,13 +99,17 @@ def install_span_recorder(model, cfg):
     """
     orig = model.prepare_inputs_labels_for_multimodal
     image_token_index = getattr(model.config, "image_token_index", -200)
+    # Stash spans on the INNER language model — that is the object whose patched
+    # forward (`self`) reads `_proposed_spans`. (For the bare-stub unit test with
+    # no `.model`, fall back to the model itself.)
+    lm = getattr(model, "model", model)
 
     def wrapped(input_ids, position_ids, attention_mask, past_key_values,
                 labels, images, image_sizes=None, *args, **kw):
         if input_ids is not None and (input_ids == image_token_index).any():
-            model._proposed_spans = compute_spans(input_ids, image_token_index, cfg.r1)
+            lm._proposed_spans = compute_spans(input_ids, image_token_index, cfg.r1)
         else:
-            model._proposed_spans = None
+            lm._proposed_spans = None
         return orig(input_ids, position_ids, attention_mask, past_key_values,
                     labels, images, image_sizes, *args, **kw)
 
