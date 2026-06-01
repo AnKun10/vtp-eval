@@ -20,7 +20,7 @@ _N_LAYERS, _D, _FFN, _FFN_MATS = 32, 4096, 11008, 3
 _SYS_LEN, _TEXT = 35, 11          # POPE-ish prompt; constant offset, fine for relative
 
 
-def _layer_flops(seq_len: int) -> float:
+def _layer_flops(seq_len: float) -> float:
     attn_proj = 4 * seq_len * _D * _D
     attn_mm = 2 * seq_len * seq_len * _D
     ffn = _FFN_MATS * seq_len * _D * _FFN
@@ -29,9 +29,9 @@ def _layer_flops(seq_len: int) -> float:
 
 def estimate_tflops(avg_tokens: float) -> float:
     """Approximate prefill TFLOPs treating every layer at avg_tokens visual
-    tokens (monotonic in avg_tokens; for relative comparison only)."""
+    tokens (strictly monotonic in avg_tokens; for relative comparison only)."""
     seq = _SYS_LEN + float(avg_tokens) + _TEXT
-    return _N_LAYERS * _layer_flops(int(round(seq))) / 1e12
+    return _N_LAYERS * _layer_flops(seq) / 1e12
 
 
 def pick_primary_metric(task_results: Dict) -> Tuple[str, float]:
@@ -42,7 +42,7 @@ def pick_primary_metric(task_results: Dict) -> Tuple[str, float]:
     """
     items = []
     for k, v in task_results.items():
-        if not isinstance(v, (int, float)):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
             continue
         base = k.split(",")[0]
         if base.endswith("_stderr"):
@@ -97,6 +97,7 @@ def aggregate(results_dir: Path, output_csv: Path) -> List[Dict]:
             })
     cols = ["method", "task", "metric", "value", "avg_tokens", "keep_ratio_pct",
             "encoder_ms", "prefill_ms", "decode_ms", "total_ms", "peak_mem_mb", "tflops"]
+    Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
     with Path(output_csv).open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()

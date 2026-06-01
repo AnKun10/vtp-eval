@@ -58,4 +58,5 @@ def test_aggregate_one_run(tmp_path):
     assert r["metric"] == "pope_f1_score" and float(r["value"]) == 0.88
     assert float(r["keep_ratio_pct"]) == round(64 / 576 * 100, 2)
     assert float(r["prefill_ms"]) == 20.0
+    assert float(r["total_ms"]) == 55.0   # timing total_latency_ms -> total_ms
     assert out_csv.exists()
