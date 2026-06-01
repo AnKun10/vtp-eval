@@ -197,3 +197,35 @@ def test_prune_after_layer_k_no_instruction_falls_back_to_preimage():
     assert pos2.tolist() == [[0, 1, 2]]
     assert h2.shape == (B, 3, D)
     assert past2 is None
+
+
+def test_install_span_recorder_stashes_spans_and_delegates():
+    from vtp_eval.proposed_method import stage2_llm
+    from vtp_eval.proposed_method.config import ProposedConfig
+
+    calls = {}
+
+    class _StubModel:
+        class _Cfg: image_token_index = -200
+        config = _Cfg()
+        def prepare_inputs_labels_for_multimodal(self, input_ids, position_ids,
+                                                 attention_mask, past_key_values,
+                                                 labels, images, image_sizes=None,
+                                                 *a, **k):
+            calls["delegated"] = True
+            return "ORIGINAL_RESULT"
+
+    m = _StubModel()
+    cfg = ProposedConfig(dominant_k=2, diversity_m=2, pruned_layer=0, llm_keep_r2=1)  # r1=4
+    stage2_llm.install_span_recorder(m, cfg)
+
+    ids = torch.tensor([[1, 100, -200, 200, 201]])
+    out = m.prepare_inputs_labels_for_multimodal(ids, None, None, None, None, object())
+    assert out == "ORIGINAL_RESULT"
+    assert calls["delegated"] is True
+    assert m._proposed_spans["vision_start"].tolist() == [2]
+    assert m._proposed_spans["vision_len"] == 4
+
+    # text-only (no image token) -> spans None
+    m.prepare_inputs_labels_for_multimodal(torch.tensor([[1, 2, 3]]), None, None, None, None, None)
+    assert m._proposed_spans is None
