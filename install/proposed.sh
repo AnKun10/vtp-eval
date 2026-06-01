@@ -58,7 +58,8 @@ pip install -e "$LLAVA_DIR" --no-deps
 pip install --no-cache-dir --force-reinstall --no-deps \
     "transformers==4.37.2" "tokenizers==0.15.1" "huggingface_hub==0.24.7"
 pip install --no-cache-dir \
-    "accelerate>=0.21,<0.27" "sentencepiece" "protobuf" "pillow>=10" "einops" "pyyaml"
+    "accelerate>=0.21,<0.27" "sentencepiece" "protobuf" "pillow>=10" "einops" "pyyaml" \
+    "regex" "safetensors"   # regex/safetensors are transformers runtime deps (--no-deps skipped them)
 
 # 5. Install vtp-eval editable so vtp_eval.proposed_method resolves.
 pip install -e . --no-deps

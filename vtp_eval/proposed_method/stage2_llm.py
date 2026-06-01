@@ -113,43 +113,129 @@ def install_span_recorder(model, cfg):
 
 
 def make_llama_forward(cfg):
-    """Return a LlamaModel.forward that prunes once, after layer cfg.pruned_layer.
-
-    Binds cfg to the version-pinned forward copy in _llama_forward_437, which
-    must contain the verbatim transformers 4.37.2 LlamaModel.forward body with
-    prune_after_layer_k spliced in (see module docstring + Part E sync note).
-    """
+    """Return a LlamaModel.forward (transformers 4.37.2) with the Stage-2 prune
+    spliced in at layer ``cfg.pruned_layer``."""
     def forward(self, *args, **kw):
         return _llama_forward_437(self, cfg, *args, **kw)
     return forward
 
 
-def _llama_forward_437(self, cfg, *args, **kw):
-    """Verbatim transformers 4.37.2 LlamaModel.forward + Stage-2 prune splice.
+def _llama_forward_437(self, cfg, input_ids=None, attention_mask=None,
+                       position_ids=None, past_key_values=None, inputs_embeds=None,
+                       use_cache=None, output_attentions=None,
+                       output_hidden_states=None, return_dict=None, **kwargs):
+    """transformers 4.37.2 ``LlamaModel.forward`` + Stage-2 text->vision prune.
 
-    SYNC PROCEDURE (run on the Vast.ai image where transformers==4.37.2):
-      1. `python -c "import inspect; from transformers.models.llama.modeling_llama \\
-         import LlamaModel; print(inspect.getsource(LlamaModel.forward))"`
-      2. Paste that body here, replacing this stub. Keep the signature
-         `(self, cfg, *args, **kw)` by binding the original kwargs.
-      3. Inside the decoder-layer loop:
-         - force attention at layer k: pass
-           `output_attentions=output_attentions or (idx == cfg.pruned_layer)`
-           into `decoder_layer(...)`.
-         - immediately AFTER `hidden_states = layer_outputs[0]`, insert (note the
-           mask guard: the no-text skip path returns _mask=None meaning "keep the
-           existing mask" — never overwrite attention_mask with None, or causal
-           masking is lost for layers k+1..L):
-             spans = getattr(self, "_proposed_spans", None)
-             if idx == cfg.pruned_layer and spans is not None and hidden_states.shape[1] > 1:
-                 _hs, _pos, _mask, _pkv = prune_after_layer_k(
-                     hidden_states, layer_outputs[1], position_ids,
-                     past_key_values, spans, cfg, use_cache)
-                 hidden_states, position_ids, past_key_values = _hs, _pos, _pkv
-                 if _mask is not None:
-                     attention_mask = _mask
-      4. Verify with `tests/test_proposed_smoke.py -m slow`.
+    A faithful copy of the 4.37.2 body (inference path; the train-only
+    gradient-checkpointing branch is dropped) with one splice: after layer
+    ``cfg.pruned_layer`` runs during PREFILL, drop all but the top-R2 vision
+    tokens (scored by instruction->vision attention) from the sequence,
+    position_ids and causal mask for the remaining layers.
+
+    The KV cache is deliberately NOT sliced: layers 0..k keep their full KV
+    (FastV behavior — savings come from layers k+1..L processing fewer tokens),
+    which also keeps decode-time RoPE positions correct (the next-token position
+    continues from the original sequence length via layer-0's cache length).
+
+    transformers-internal imports are deferred so importing this module never
+    requires transformers 4.37.2 (keeps the pure-tensor unit tests portable).
     """
-    raise NotImplementedError(
-        "_llama_forward_437 must be synced with transformers 4.37.2 on the Vast.ai "
-        "image — see this function's docstring for the procedure.")
+    from transformers.cache_utils import Cache, DynamicCache
+    from transformers.modeling_attn_mask_utils import (
+        _prepare_4d_causal_attention_mask,
+        _prepare_4d_causal_attention_mask_for_sdpa,
+    )
+    from transformers.modeling_outputs import BaseModelOutputWithPast
+
+    output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+    output_hidden_states = (
+        output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+    )
+    use_cache = use_cache if use_cache is not None else self.config.use_cache
+    return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+
+    if input_ids is not None and inputs_embeds is not None:
+        raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+    elif input_ids is not None:
+        batch_size, seq_length = input_ids.shape[:2]
+    elif inputs_embeds is not None:
+        batch_size, seq_length = inputs_embeds.shape[:2]
+    else:
+        raise ValueError("You have to specify either input_ids or inputs_embeds")
+
+    past_key_values_length = 0
+    if use_cache:
+        use_legacy_cache = not isinstance(past_key_values, Cache)
+        if use_legacy_cache:
+            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+        past_key_values_length = past_key_values.get_usable_length(seq_length)
+
+    if position_ids is None:
+        device = input_ids.device if input_ids is not None else inputs_embeds.device
+        position_ids = torch.arange(
+            past_key_values_length, seq_length + past_key_values_length, dtype=torch.long, device=device
+        )
+        position_ids = position_ids.unsqueeze(0)
+
+    if inputs_embeds is None:
+        inputs_embeds = self.embed_tokens(input_ids)
+
+    if getattr(self, "_use_flash_attention_2", False):
+        attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
+    elif getattr(self, "_use_sdpa", False) and not output_attentions:
+        attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
+            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+        )
+    else:
+        attention_mask = _prepare_4d_causal_attention_mask(
+            attention_mask, (batch_size, seq_length), inputs_embeds, past_key_values_length
+        )
+
+    hidden_states = inputs_embeds
+    all_hidden_states = () if output_hidden_states else None
+    all_self_attns = () if output_attentions else None
+
+    for idx, decoder_layer in enumerate(self.layers):
+        if output_hidden_states:
+            all_hidden_states += (hidden_states,)
+
+        layer_oa = output_attentions or (idx == cfg.pruned_layer)
+        layer_outputs = decoder_layer(
+            hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_values,
+            output_attentions=layer_oa,
+            use_cache=use_cache,
+        )
+        hidden_states = layer_outputs[0]
+
+        # --- Stage 2: prune vision tokens after layer k (prefill only) ---
+        spans = getattr(self, "_proposed_spans", None)
+        if idx == cfg.pruned_layer and spans is not None and hidden_states.shape[1] > 1:
+            # past=None -> do NOT slice the cache (see docstring).
+            _hs, _pos, _mask, _ = prune_after_layer_k(
+                hidden_states, layer_outputs[1], position_ids, None, spans, cfg,
+                use_cache=False)
+            hidden_states, position_ids = _hs, _pos
+            if _mask is not None:
+                attention_mask = _mask
+
+        if output_attentions:
+            all_self_attns += (layer_outputs[1],)
+
+    hidden_states = self.norm(hidden_states)
+    if output_hidden_states:
+        all_hidden_states += (hidden_states,)
+
+    next_cache = None
+    if use_cache:
+        next_cache = past_key_values.to_legacy_cache() if use_legacy_cache else past_key_values
+    if not return_dict:
+        return tuple(v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns] if v is not None)
+    return BaseModelOutputWithPast(
+        last_hidden_state=hidden_states,
+        past_key_values=next_cache,
+        hidden_states=all_hidden_states,
+        attentions=all_self_attns,
+    )
