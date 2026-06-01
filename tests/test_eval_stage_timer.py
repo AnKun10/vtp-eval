@@ -27,6 +27,7 @@ def test_summarize_divides_by_batch_size():
     # record0: 10/1=10 ; record1: 20/2=10 -> mean 10
     assert s["encoder_ms"] == 10.0
     assert s["n_samples"] == 3              # 1 + 2
+    assert s["decode_tokens"] == 3.0        # per-sample: 3/1=3 ; 6/2=3 -> mean 3
 
 
 def test_summarize_empty_is_zeros():

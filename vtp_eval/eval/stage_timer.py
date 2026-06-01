@@ -42,7 +42,8 @@ def summarize_stage_records(records: List[Dict], drop_warmup: bool = True) -> Di
         "prefill_ms": per_sample_mean("prefill_ms"),
         "decode_ms": per_sample_mean("decode_ms"),
         "total_latency_ms": per_sample_mean("total_ms"),
-        "decode_tokens": statistics.fmean(r["decode_steps"] for r in recs),
+        "decode_tokens": statistics.fmean(
+            r["decode_steps"] / max(1, r["batch_size"]) for r in recs),
         "peak_mem_mb": max(r["peak_mem_mb"] for r in recs),
     }
 
@@ -158,4 +159,5 @@ class StageTimer:
 
     def dump(self, path, pruning_meta: Dict) -> None:
         Path(path).write_text(json.dumps(
-            {"records": self.records, "pruning_meta": pruning_meta}, indent=2))
+            {"records": self.records, "pruning_meta": pruning_meta}, indent=2),
+            encoding="utf-8")
