@@ -82,3 +82,29 @@ def test_slice_past_key_values_legacy_tuple():
     sliced = selection.slice_past_key_values(past, keep)
     assert sliced[0][0].shape == (B, nh, 5, hd)
     assert torch.equal(sliced[0][0][0, :, 2, :], layer[0][0, :, 3, :])  # index 3 -> pos 2
+
+
+class _FakeOutputs:
+    def __init__(self, attentions, hidden_states):
+        self.attentions = attentions
+        self.hidden_states = hidden_states
+
+
+def test_stage1_forward_returns_R1_selected_patches():
+    from vtp_eval.proposed_method import stage1_vision
+    from vtp_eval.proposed_method.config import ProposedConfig
+
+    B, H, P, D = 1, 2, 20, 16
+    # need >=2 hidden layers so [-2] is valid
+    attn = torch.rand(B, H, 1 + P, 1 + P)
+    hidden = torch.randn(B, 1 + P, D)
+    outs = _FakeOutputs(attentions=[attn, attn], hidden_states=[hidden, hidden])
+
+    cfg = ProposedConfig(dominant_k=5, diversity_m=3, pruned_layer=12, llm_keep_r2=4)
+    feats = stage1_vision.select_features(outs, cfg)
+    assert feats.shape == (B, 8, D)                    # R1 = 8 patch features
+
+    # the returned features must be exactly rows of the penultimate patch hidden states
+    keep = selection.select_stage1(attn, hidden, 5, 3)
+    expected = hidden[:, 1:, :].gather(1, keep[:, :, None].expand(B, 8, D))
+    assert torch.allclose(feats, expected)
