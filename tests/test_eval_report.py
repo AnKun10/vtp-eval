@@ -41,6 +41,28 @@ def test_parse_sidecar_writes_timing_json(tmp_path):
     assert d["peak_mem_mb"] == 120.0
 
 
+def test_select_metrics_mapped_task():
+    res = {"exact_match,none": 0.62, "exact_match_stderr,none": 0.01}
+    assert report.select_metrics("gqa", res) == [("exact_match", 0.62)]
+
+
+def test_select_metrics_fallback_for_unmapped_task():
+    # task absent from TASK_PRIMARY -> heuristic (prefers f1)
+    res = {"foo_f1_score,none": 0.70, "foo_accuracy,none": 0.60}
+    assert report.select_metrics("brand_new_task", res) == [("foo_f1_score", 0.70)]
+
+
+def test_select_metrics_mme_emits_perception_and_total():
+    res = {"mme_perception_score,none": 1500.0, "mme_cognition_score,none": 350.0}
+    assert report.select_metrics("mme", res) == [
+        ("mme_perception", 1500.0), ("mme_total", 1850.0)]
+
+
+def test_metric_value_ignores_bool_and_stderr():
+    res = {"accuracy,none": 0.71, "accuracy_stderr,none": 0.02, "submission,none": True}
+    assert report._metric_value(res, "accuracy") == 0.71
+
+
 def test_aggregate_one_run(tmp_path):
     run = tmp_path / "proposed_x"
     run.mkdir()

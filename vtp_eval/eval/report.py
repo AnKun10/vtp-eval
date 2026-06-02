@@ -57,6 +57,46 @@ def pick_primary_metric(task_results: Dict) -> Tuple[str, float]:
     return items[0]
 
 
+# Per-task headline metric. Values are the metric base name (before the ",none"
+# suffix lmms-eval appends). "mme" is special-cased in select_metrics (two
+# sub-scores -> perception + total). Tasks absent here fall back to the
+# pick_primary_metric heuristic. Keys verified on-box (see plan Task 1).
+TASK_PRIMARY = {
+    "pope": "pope_f1_score",
+    "gqa": "exact_match",
+    "textvqa_val": "exact_match",
+    "scienceqa_img": "exact_match",
+    "vizwiz_vqa_val": "exact_match",
+    "mmbench_en_dev": "accuracy",
+    "mme": ("mme_perception_score", "mme_cognition_score"),  # special-cased
+}
+
+
+def _metric_value(task_res: Dict, base: str) -> float:
+    """Value of the metric whose key (before ',') == base; skip bool / stderr."""
+    for k, v in task_res.items():
+        if k.split(",")[0] == base and not isinstance(v, bool) \
+                and isinstance(v, (int, float)):
+            return float(v)
+    raise KeyError(base)
+
+
+def select_metrics(task: str, task_res: Dict) -> List[Tuple[str, float]]:
+    """Headline metric(s) for a task as [(clean_name, value), ...].
+
+    Uses TASK_PRIMARY; MME returns two rows (perception, total). Unmapped tasks
+    fall back to the pick_primary_metric heuristic.
+    """
+    spec = TASK_PRIMARY.get(task)
+    if spec is None:
+        return [pick_primary_metric(task_res)]
+    if task == "mme":
+        p = _metric_value(task_res, "mme_perception_score")
+        c = _metric_value(task_res, "mme_cognition_score")
+        return [("mme_perception", p), ("mme_total", p + c)]
+    return [(spec, _metric_value(task_res, spec))]
+
+
 def parse_sidecar(sidecar: Path, output: Path) -> Dict:
     raw = json.loads(Path(sidecar).read_text(encoding="utf-8"))
     summary = summarize_stage_records(raw.get("records", []), drop_warmup=True)
