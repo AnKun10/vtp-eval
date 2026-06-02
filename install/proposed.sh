@@ -70,7 +70,13 @@ pip install -e . --no-deps
 if [ "${INSTALL_LMMS:-1}" = "1" ]; then
     LMMS_DIR="$WORKSPACE/lmms-eval"
     [ -d "$LMMS_DIR" ] || git clone https://github.com/EvolvingLMMs-Lab/lmms-eval.git "$LMMS_DIR"
-    ( cd "$LMMS_DIR" && git checkout v0.5 )
+    # Pin to v0.5. A shallow on-start clone may not have the v0.5 tag as a local
+    # ref (its default branch already IS the v0.5 release commit), so a failed
+    # checkout must NOT abort the whole install under `set -e` — fetch tags, then
+    # checkout, and fall through if the tag still isn't resolvable.
+    ( cd "$LMMS_DIR" && git fetch --tags --quiet 2>/dev/null || true
+      git checkout v0.5 2>/dev/null \
+        || echo "[install/proposed] v0.5 tag not a local ref — assuming clone is already at the v0.5 commit" )
     # These task yamls hardcode `token: True`, which forces datasets to require a
     # cached HF token even though the lmms-lab/* datasets are public. Flip to
     # False so they load anonymously (no HF login needed on a fresh instance).
