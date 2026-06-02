@@ -20,7 +20,8 @@ while IFS= read -r TASK; do
   while IFS= read -r RUN; do
     [ -z "$RUN" ] && continue
     echo "==================== $RUN × $TASK ===================="
-    CONFIG="$CONFIG" bash scripts/eval/run.sh "$RUN" "$TASK" "$LIMIT"
+    CONFIG="$CONFIG" bash scripts/eval/run.sh "$RUN" "$TASK" "$LIMIT" \
+      || echo "[warn] $RUN × $TASK failed — continuing sweep (re-run to retry this cell)"
   done <<< "$RUNS"
 done <<< "$TASKS"
 python -m vtp_eval.eval.report aggregate results/ --output results/summary.csv

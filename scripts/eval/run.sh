@@ -39,7 +39,7 @@ python -m vtp_eval.eval.run_lmms \
 
 # lmms-eval v0.5 nests <model>/<timestamp>_results.json under --output_path.
 if [ ! -f "$OUT_DIR/results.json" ]; then
-  FOUND=$(find "$OUT_DIR" -name '*results.json' | head -1 || true)
+  FOUND=$(find "$OUT_DIR" -name '*results.json' | sort | head -1 || true)
   [ -n "$FOUND" ] && cp "$FOUND" "$OUT_DIR/results.json"
 fi
 
