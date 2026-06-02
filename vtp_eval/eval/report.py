@@ -73,7 +73,7 @@ TASK_PRIMARY = {
 
 
 def _metric_value(task_res: Dict, base: str) -> float:
-    """Value of the metric whose key (before ',') == base; skip bool / stderr."""
+    """Value of the metric whose key (before ',') == base; skip bool / non-numeric."""
     for k, v in task_res.items():
         if k.split(",")[0] == base and not isinstance(v, bool) \
                 and isinstance(v, (int, float)):
@@ -90,9 +90,9 @@ def select_metrics(task: str, task_res: Dict) -> List[Tuple[str, float]]:
     spec = TASK_PRIMARY.get(task)
     if spec is None:
         return [pick_primary_metric(task_res)]
-    if task == "mme":
-        p = _metric_value(task_res, "mme_perception_score")
-        c = _metric_value(task_res, "mme_cognition_score")
+    if isinstance(spec, tuple):                       # two sub-scores -> two rows
+        p = _metric_value(task_res, spec[0])
+        c = _metric_value(task_res, spec[1])
         return [("mme_perception", p), ("mme_total", p + c)]
     return [(spec, _metric_value(task_res, spec))]
 

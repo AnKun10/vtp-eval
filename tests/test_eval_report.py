@@ -89,11 +89,13 @@ def test_aggregate_two_level_multitask_and_mme(tmp_path):
     timing = {"encoder_ms": 5.0, "prefill_ms": 20.0, "decode_ms": 30.0,
               "total_latency_ms": 55.0, "decode_tokens": 1.0, "peak_mem_mb": 120.0,
               "pruning_meta": {"method": "proposed", "avg_tokens": 64}}
-    pope = run / "pope"; pope.mkdir(parents=True)
+    pope = run / "pope"
+    pope.mkdir(parents=True)
     (pope / "results.json").write_text(json.dumps(
         {"results": {"pope": {"pope_f1_score,none": 0.76}}}))
     (pope / "timing.json").write_text(json.dumps(timing))
-    mme = run / "mme"; mme.mkdir(parents=True)
+    mme = run / "mme"
+    mme.mkdir(parents=True)
     (mme / "results.json").write_text(json.dumps(
         {"results": {"mme": {"mme_perception_score,none": 1500.0,
                              "mme_cognition_score,none": 350.0}}}))
