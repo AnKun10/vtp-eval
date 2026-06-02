@@ -39,7 +39,8 @@ python -m vtp_eval.eval.run_lmms \
 # lmms-eval v0.5 may nest results.json under a timestamped subdir of --output_path.
 # Surface it at results/<run>/results.json for the skip-check + report aggregation.
 if [ ! -f "$OUT_DIR/results.json" ]; then
-  FOUND=$(find "$OUT_DIR" -name results.json | head -1 || true)
+  # lmms-eval v0.5 writes <model>/<timestamp>_results.json — match the suffix.
+  FOUND=$(find "$OUT_DIR" -name '*results.json' | head -1 || true)
   [ -n "$FOUND" ] && cp "$FOUND" "$OUT_DIR/results.json"
 fi
 

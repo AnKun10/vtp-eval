@@ -40,6 +40,33 @@ def test_summarize_single_record_not_dropped():
     assert s["n_samples"] == 1 and s["prefill_ms"] == 20.0
 
 
+def test_llm_stage_none_is_prefill():
+    assert st.llm_stage(None) == "prefill"
+
+
+def test_llm_stage_empty_legacy_tuple_is_prefill():
+    assert st.llm_stage(()) == "prefill"
+
+
+def test_llm_stage_nonempty_legacy_tuple_is_decode():
+    # legacy cache entry: (key, value) with key.shape == [B, H, S, D]
+    class _T:
+        def __init__(self, s):
+            self.shape = (1, 32, s, 128)
+    pkv = (( _T(56), _T(56) ),)          # one layer, cached length 56
+    assert st.llm_stage(pkv) == "decode"
+
+
+def test_llm_stage_cache_object_uses_seq_length():
+    class _Cache:
+        def __init__(self, n):
+            self._n = n
+        def get_seq_length(self):
+            return self._n
+    assert st.llm_stage(_Cache(0)) == "prefill"
+    assert st.llm_stage(_Cache(83)) == "decode"
+
+
 def test_stage_timer_cpu_bookkeeping():
     # On CPU (no CUDA), region timing uses perf_counter; verify the bucket
     # bookkeeping (decode_steps count, all stages present, non-negative).

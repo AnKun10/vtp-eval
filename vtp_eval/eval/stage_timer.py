@@ -18,6 +18,28 @@ from typing import Dict, List
 STAGES = ("encoder", "prefill", "decode")
 
 
+def llm_stage(past_key_values) -> str:
+    """Classify an LLM forward as 'prefill' or 'decode' by whether a non-empty
+    KV cache is already present.
+
+    Sequence length is NOT a reliable signal: a pruned model can re-feed >1
+    token per decode step, so a seq>1 rule misclassifies decode as prefill and
+    zeroes the decode timing. The cache is authoritative — prefill is the only
+    forward with no prior cached context.
+    """
+    if past_key_values is None:
+        return "prefill"
+    try:
+        if hasattr(past_key_values, "get_seq_length"):       # transformers Cache
+            return "decode" if past_key_values.get_seq_length() > 0 else "prefill"
+        if len(past_key_values) == 0 or past_key_values[0] is None:  # legacy tuple
+            return "prefill"
+        first = past_key_values[0][0]
+        return "decode" if (first is not None and first.shape[2] > 0) else "prefill"
+    except Exception:
+        return "prefill"
+
+
 def summarize_stage_records(records: List[Dict], drop_warmup: bool = True) -> Dict:
     """Per-batch stage records -> per-sample averages.
 
@@ -145,15 +167,8 @@ class StageTimer:
         _lm_fwd = lm.forward
 
         def lm_forward(*a, **k):
-            ids = k.get("input_ids", a[0] if a else None)
-            emb = k.get("inputs_embeds")
-            if ids is not None and hasattr(ids, "shape"):
-                seq = ids.shape[1]
-            elif emb is not None and hasattr(emb, "shape"):
-                seq = emb.shape[1]
-            else:
-                seq = 1
-            with timer.region("prefill" if seq > 1 else "decode"):
+            pkv = k.get("past_key_values", a[3] if len(a) > 3 else None)
+            with timer.region(llm_stage(pkv)):
                 return _lm_fwd(*a, **k)
         lm.forward = lm_forward
 

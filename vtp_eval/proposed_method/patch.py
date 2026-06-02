@@ -20,6 +20,14 @@ def proposed_prune(model, cfg):
     from llava.model.multimodal_encoder.clip_encoder import CLIPVisionTower
     CLIPVisionTower.forward = stage1_vision.make_forward(cfg)
 
+    # Stage 2 temporarily off: vision-only pruning, untouched LlamaModel.forward,
+    # so the KV cache and decode positions stay native (no re-feed). The Stage-2
+    # decode path is being reworked (no-slice + full-rotary).
+    if not getattr(cfg, "stage2_enabled", True):
+        model._proposed_cfg = cfg
+        getattr(model, "model", model)._proposed_last_prune = None
+        return model
+
     # --- Stage 2: guard eager attention, install span recorder + forward ---
     attn_impl = getattr(model.config, "_attn_implementation", None)
     if attn_impl not in (None, "eager"):

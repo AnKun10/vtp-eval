@@ -42,3 +42,14 @@ def test_from_args_merges_overrides_over_defaults():
         overrides={"pruned_layer": 8},
     )
     assert (cfg.dominant_k, cfg.pruned_layer) == (54, 8)
+
+
+def test_avg_tokens_stage1_only_is_r1():
+    # Stage 2 off: no mid-stack reduction, every layer runs at R1.
+    cfg = ProposedConfig(dominant_k=54, diversity_m=10, stage2_enabled=False)
+    assert cfg.avg_tokens(32) == 64.0
+
+
+def test_from_args_parses_stage2_enabled():
+    cfg = ProposedConfig.from_args(defaults=None, overrides={"stage2_enabled": False})
+    assert cfg.stage2_enabled is False
