@@ -18,15 +18,15 @@ runs/benchmarks by editing the `runs` / `tasks` lists. Other methods
 ## Run on Vast.ai
 1. Rent with the proposed-method template (py310/torch-2.1.2 image + the §2
    on-start from `docs/vast_proposed_method.md`). The on-start now also installs
-   lmms-eval v0.5 (via `install/proposed.sh`). Disk **≥120 GB** (POPE COCO images + HF datasets cache) (GQA / TextVQA / MMBench image caches on top of POPE).
+   lmms-eval v0.5 (via `install/proposed.sh`). Disk **≥120 GB** (POPE COCO images + GQA / TextVQA / MMBench image caches + HF datasets cache).
 2. SSH in. The venv auto-activates only in an interactive shell — for scripts
    run `source /venv/main/bin/activate` first. Then:
    `export HF_HOME=/workspace/.cache/huggingface HF_HUB_DISABLE_XET=1 HF_HUB_ENABLE_HF_TRANSFER=1`.
    `HF_HUB_DISABLE_XET=1` is important: recent `huggingface_hub` defaults to the
    xet backend, which on Vast stalled at 0 B/s ("connection struggling"); plain
-   HTTPS + `hf_transfer` downloads the 13.5 GB model at ~12 MB/s. (POPE's task
-   yaml `token: True` is flipped to `False` by `install/proposed.sh` so the
-   public dataset loads without an HF login.)
+   HTTPS + `hf_transfer` downloads the 13.5 GB model at ~12 MB/s. (The benchmark
+   task yamls' `token: True` is flipped to `False` by `install/proposed.sh` so
+   the public lmms-lab datasets load without an HF login.)
 3. Smoke (single cell): `bash scripts/eval/run.sh baseline gqa 20`
    → check `results/baseline/gqa/{results.json,timing.json}`.
 4. Full sweep: `bash scripts/eval/run_all.sh` (all runs × all 7 tasks) → `results/summary.csv`.
@@ -47,7 +47,7 @@ contributes two rows** — `mme_perception` and `mme_total` (perception + cognit
 - Timing drops the first batch as warm-up; per-sample latency = batch time /
   batch_size. Run at `batch_size=1` (the config default).
 - lmms-eval v0.5 may nest `results.json` in a timestamped subdir of
-  `--output_path`; `run.sh` copies it up to `results/<run>/results.json`.
+  `--output_path`; `run.sh` copies it up to `results/<run>/<task>/results.json`.
 - If `--tasks pope` errors, find the exact task id with
   `python -m vtp_eval.eval.run_lmms --tasks list`.
 - The sweep is **resumable** — each `results/<run>/<task>/results.json` that exists is
