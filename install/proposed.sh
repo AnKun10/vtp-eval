@@ -77,11 +77,16 @@ if [ "${INSTALL_LMMS:-1}" = "1" ]; then
     ( cd "$LMMS_DIR" && git fetch --tags --quiet 2>/dev/null || true
       git checkout v0.5 2>/dev/null \
         || echo "[install/proposed] v0.5 tag not a local ref — assuming clone is already at the v0.5 commit" )
-    # These task yamls hardcode `token: True`, which forces datasets to require a
-    # cached HF token even though the lmms-lab/* datasets are public. Flip to
-    # False so they load anonymously (no HF login needed on a fresh instance).
+    # These tasks hardcode an HF auth token, forcing datasets to require a cached
+    # token even though the lmms-lab/* datasets are public. It appears two ways:
+    # in the task yaml (`token: True`) AND in Python (`token=True` in utils.py,
+    # e.g. gqa loads its images config there). Flip both to False so everything
+    # loads anonymously (no HF login needed on a fresh instance).
     for d in pope gqa textvqa mme mmbench scienceqa vizwiz_vqa; do
-        sed -i 's/token: True/token: False/' "$LMMS_DIR"/lmms_eval/tasks/$d/*.yaml 2>/dev/null || true
+        sed -i 's/token: True/token: False/g; s/token: true/token: false/g' \
+            "$LMMS_DIR"/lmms_eval/tasks/$d/*.yaml 2>/dev/null || true
+        sed -i 's/token=True/token=False/g' \
+            "$LMMS_DIR"/lmms_eval/tasks/$d/*.py 2>/dev/null || true
     done
     pip install -e "$LMMS_DIR" --no-deps
     # lmms-eval v0.5 pulls transformers>=4.39 / accelerate>=0.29 — those would break

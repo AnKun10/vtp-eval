@@ -1,7 +1,8 @@
 # configs/eval.yaml — benchmark runs for the proposed method vs baseline.
 model_base: liuhaotian/llava-v1.5-7b
 common_args: { attn_implementation: eager }   # proposed needs eager; baseline ok with it
-tasks: [pope, gqa, textvqa_val, mme, mmbench_en_dev, scienceqa_img, vizwiz_vqa_val]
+# mmbench_en_dev omitted: its metric is gpt_eval_score (needs an OpenAI API key).
+tasks: [pope, gqa, textvqa_val, mme, scienceqa_img, vizwiz_vqa_val]
 batch_size: 1                                  # clean per-sample timing; proposed assumes bs=1
 runs:
   - { name: baseline,              model: llava_baseline, model_args: {} }

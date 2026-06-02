@@ -67,8 +67,9 @@ TASK_PRIMARY = {
     "textvqa_val": "exact_match",
     "scienceqa_img": "exact_match",
     "vizwiz_vqa_val": "exact_match",
-    "mmbench_en_dev": "accuracy",
     "mme": ("mme_perception_score", "mme_cognition_score"),  # special-cased
+    # mmbench_en_dev intentionally absent: its metric is gpt_eval_score (needs an
+    # OpenAI API key), so it is out of the default set for now.
 }
 
 
@@ -84,16 +85,30 @@ def _metric_value(task_res: Dict, base: str) -> float:
 def select_metrics(task: str, task_res: Dict) -> List[Tuple[str, float]]:
     """Headline metric(s) for a task as [(clean_name, value), ...].
 
-    Uses TASK_PRIMARY; MME returns two rows (perception, total). Unmapped tasks
-    fall back to the pick_primary_metric heuristic.
+    Uses TASK_PRIMARY; MME returns perception + total when both sub-scores are
+    present (and a lone sub-score otherwise, so a partial/--limit run never drops
+    the task). Unmapped tasks fall back to the pick_primary_metric heuristic.
     """
     spec = TASK_PRIMARY.get(task)
     if spec is None:
         return [pick_primary_metric(task_res)]
-    if isinstance(spec, tuple):                       # two sub-scores -> two rows
-        p = _metric_value(task_res, spec[0])
-        c = _metric_value(task_res, spec[1])
-        return [("mme_perception", p), ("mme_total", p + c)]
+    if isinstance(spec, tuple):                       # MME: two sub-scores
+        sub = {}
+        for name, key in zip(("perception", "cognition"), spec):
+            try:
+                sub[name] = _metric_value(task_res, key)
+            except KeyError:
+                pass
+        rows: List[Tuple[str, float]] = []
+        if "perception" in sub:
+            rows.append(("mme_perception", sub["perception"]))
+        if {"perception", "cognition"} <= sub.keys():
+            rows.append(("mme_total", sub["perception"] + sub["cognition"]))
+        elif "cognition" in sub:                      # partial run: cognition only
+            rows.append(("mme_cognition", sub["cognition"]))
+        if not rows:
+            raise KeyError(f"no MME sub-scores in {sorted(task_res)}")
+        return rows
     return [(spec, _metric_value(task_res, spec))]
 
 

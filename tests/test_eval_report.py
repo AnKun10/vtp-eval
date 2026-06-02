@@ -58,6 +58,12 @@ def test_select_metrics_mme_emits_perception_and_total():
         ("mme_perception", 1500.0), ("mme_total", 1850.0)]
 
 
+def test_select_metrics_mme_partial_run_keeps_lone_subscore():
+    # A --limit run can produce only one MME sub-score; the task must not vanish.
+    res = {"mme_cognition_score,none": 45.0}
+    assert report.select_metrics("mme", res) == [("mme_cognition", 45.0)]
+
+
 def test_metric_value_ignores_bool_and_stderr():
     res = {"accuracy,none": 0.71, "accuracy_stderr,none": 0.02, "submission,none": True}
     assert report._metric_value(res, "accuracy") == 0.71
