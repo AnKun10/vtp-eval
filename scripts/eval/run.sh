@@ -6,13 +6,8 @@ CONFIG=${CONFIG:-configs/eval.yaml}
 TASK=${2:-}
 LIMIT=${3:-}
 
-OUT_DIR="results/$RUN_NAME"
-mkdir -p "$OUT_DIR"
-if [ -f "$OUT_DIR/results.json" ]; then
-  echo "[skip] $OUT_DIR/results.json exists. Delete to re-run."; exit 0
-fi
-
-# Extract model, batch_size, task, model_args from YAML (unit-separator to allow commas).
+# Resolve model/batch/task/model_args from YAML first (need the resolved task
+# id for the output dir). Unit-separator join lets values contain commas.
 IFS=$'\x1f' read -r MODEL BATCH TASK_CFG MODEL_ARGS < <(python - "$CONFIG" "$RUN_NAME" "$TASK" <<'PY'
 import sys, yaml
 cfg_path, run_name, task_cli = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -26,6 +21,12 @@ print("\x1f".join([run["model"], str(batch), task,
 PY
 )
 
+OUT_DIR="results/$RUN_NAME/$TASK_CFG"          # nested: one cell per (run, task)
+mkdir -p "$OUT_DIR"
+if [ -f "$OUT_DIR/results.json" ]; then
+  echo "[skip] $OUT_DIR/results.json exists. Delete to re-run."; exit 0
+fi
+
 MODEL_ARGS="$MODEL_ARGS,timing_sidecar=$OUT_DIR/timing_raw.json"
 LIMIT_ARG=""; [ -n "$LIMIT" ] && LIMIT_ARG="--limit $LIMIT"
 
@@ -33,17 +34,15 @@ echo "[run] $RUN_NAME — $MODEL (bs=$BATCH) on $TASK_CFG"
 python -m vtp_eval.eval.run_lmms \
   --model "$MODEL" --model_args "$MODEL_ARGS" \
   --tasks "$TASK_CFG" --batch_size "$BATCH" \
-  --log_samples --log_samples_suffix "$RUN_NAME" \
+  --log_samples --log_samples_suffix "${RUN_NAME}_${TASK_CFG}" \
   --output_path "$OUT_DIR" $LIMIT_ARG 2>&1 | tee "$OUT_DIR/run.log"
 
-# lmms-eval v0.5 may nest results.json under a timestamped subdir of --output_path.
-# Surface it at results/<run>/results.json for the skip-check + report aggregation.
+# lmms-eval v0.5 nests <model>/<timestamp>_results.json under --output_path.
 if [ ! -f "$OUT_DIR/results.json" ]; then
-  # lmms-eval v0.5 writes <model>/<timestamp>_results.json — match the suffix.
   FOUND=$(find "$OUT_DIR" -name '*results.json' | head -1 || true)
   [ -n "$FOUND" ] && cp "$FOUND" "$OUT_DIR/results.json"
 fi
 
 python -m vtp_eval.eval.report parse-sidecar \
   --sidecar "$OUT_DIR/timing_raw.json" --output "$OUT_DIR/timing.json"
-echo "[done] $RUN_NAME — see $OUT_DIR"
+echo "[done] $RUN_NAME × $TASK_CFG — see $OUT_DIR"
