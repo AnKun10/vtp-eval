@@ -18,8 +18,7 @@ runs/benchmarks by editing the `runs` / `tasks` lists. Other methods
 ## Run on Vast.ai
 1. Rent with the proposed-method template (py310/torch-2.1.2 image + the §2
    on-start from `docs/vast_proposed_method.md`). The on-start now also installs
-   lmms-eval v0.5 (via `install/proposed.sh`). Disk **≥60 GB** (POPE COCO images
-   + HF datasets cache).
+   lmms-eval v0.5 (via `install/proposed.sh`). Disk **≥120 GB** (POPE COCO images + HF datasets cache) (GQA / TextVQA / MMBench image caches on top of POPE).
 2. SSH in. The venv auto-activates only in an interactive shell — for scripts
    run `source /venv/main/bin/activate` first. Then:
    `export HF_HOME=/workspace/.cache/huggingface HF_HUB_DISABLE_XET=1 HF_HUB_ENABLE_HF_TRANSFER=1`.
@@ -28,10 +27,10 @@ runs/benchmarks by editing the `runs` / `tasks` lists. Other methods
    HTTPS + `hf_transfer` downloads the 13.5 GB model at ~12 MB/s. (POPE's task
    yaml `token: True` is flipped to `False` by `install/proposed.sh` so the
    public dataset loads without an HF login.)
-3. Smoke (limit 20): `bash scripts/eval/run.sh baseline pope 20`
-   → check `results/baseline/{results.json,timing.json}`.
-4. Full sweep: `bash scripts/eval/run_all.sh` → `results/summary.csv`
-   (baseline + proposed variants on POPE).
+3. Smoke (single cell): `bash scripts/eval/run.sh baseline gqa 20`
+   → check `results/baseline/gqa/{results.json,timing.json}`.
+4. Full sweep: `bash scripts/eval/run_all.sh` (all runs × all 7 tasks) → `results/summary.csv`.
+   Quick whole-matrix sanity first: `bash scripts/eval/run_all.sh 20` (limit 20 per cell).
 5. Retrieve: `scp -P <PORT> root@<HOST>:/workspace/vtp-eval/results/summary.csv .`
 6. **Stop** (not Destroy) to keep the model + dataset cache.
 
@@ -39,7 +38,8 @@ runs/benchmarks by editing the `runs` / `tasks` lists. Other methods
 `method, task, metric, value, avg_tokens, keep_ratio_pct, encoder_ms,
 prefill_ms, decode_ms, total_ms, peak_mem_mb, tflops`. The measured stage
 latencies are the primary efficiency numbers; `tflops` is an approximate
-theoretical estimate from `avg_tokens`.
+theoretical estimate from `avg_tokens`. One row per (method, task, metric); **MME
+contributes two rows** — `mme_perception` and `mme_total` (perception + cognition).
 
 ## Notes
 - POPE ≈ 9k samples; at batch=1 a full pass per run is the slow part — use
@@ -50,6 +50,10 @@ theoretical estimate from `avg_tokens`.
   `--output_path`; `run.sh` copies it up to `results/<run>/results.json`.
 - If `--tasks pope` errors, find the exact task id with
   `python -m vtp_eval.eval.run_lmms --tasks list`.
+- The sweep is **resumable** — each `results/<run>/<task>/results.json` that exists is
+  skipped, so a re-run after a crash/timeout continues where it stopped. Recommended
+  flow: `run_all.sh 20` (smoke whole matrix) → inspect `summary.csv` → `run_all.sh`
+  (full, overnight).
 
 ## Cross-references
 - `docs/vast_proposed_method.md` — the env this installs into.
