@@ -33,15 +33,35 @@ def test_proposed_generates_and_prunes():
         prompt, tok, IMAGE_TOKEN_INDEX, return_tensors="pt").unsqueeze(0).to(model.device)
     image_tensor = process_images([img], image_processor, model.config)[0]
 
+    # Count the inner-model forward sequence lengths to verify the no-slice
+    # decode path: prefill is one seq>1 call, then every decode step must be
+    # seq==1 (the old slice-cache path re-fed a growing 2,3,4,... seq).
+    lm = model.model
+    _orig_fwd = lm.forward
+    seqs = []
+
+    def _counting(*a, **k):
+        emb = k.get("inputs_embeds")
+        ids = k.get("input_ids", a[0] if a else None)
+        if ids is not None and hasattr(ids, "shape"):
+            seqs.append(ids.shape[1])
+        elif emb is not None and hasattr(emb, "shape"):
+            seqs.append(emb.shape[1])
+        return _orig_fwd(*a, **k)
+    lm.forward = _counting
+
     with torch.inference_mode():
         output_ids = model.generate(
             input_ids,
             images=image_tensor.unsqueeze(0).half().to(model.device),
-            max_new_tokens=16, do_sample=False)
+            max_new_tokens=24, do_sample=False)
+    lm.forward = _orig_fwd
     text = tok.decode(output_ids[0], skip_special_tokens=True)
     lp = model.model._proposed_last_prune   # written by the inner-model forward
+    decode_seqs = seqs[1:]                   # everything after the prefill call
     print(f"\n[smoke] generated: {text!r}")
     print(f"[smoke] last prune: {lp}")
+    print(f"[smoke] forward seq lengths: {seqs}")
 
     assert text.strip(), "model produced empty output"
     # Stage-2 prune must have fired during prefill, dropping (R1 - R2) vision
@@ -49,3 +69,6 @@ def test_proposed_generates_and_prunes():
     assert lp is not None, "Stage 2 prune did not fire (span recorder / forward not wired)"
     assert lp["layer"] == cfg.pruned_layer
     assert lp["seq_before"] - lp["seq_after"] == cfg.r1 - cfg.llm_keep_r2
+    # No-slice decode: no token re-feed -> every decode step is a single token.
+    assert decode_seqs and all(s == 1 for s in decode_seqs), \
+        f"decode re-fed tokens (expected all seq==1): {decode_seqs}"

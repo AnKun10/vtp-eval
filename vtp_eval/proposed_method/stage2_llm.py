@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import torch
 
-from .selection import build_keep_index, slice_past_key_values, text_to_vision_scores
+from .selection import build_keep_index, text_to_vision_scores
 
 
 def compute_spans(input_ids: torch.Tensor, image_token_index: int, r1: int) -> dict:
@@ -49,18 +49,23 @@ def _make_causal_mask_like(hidden_states: torch.Tensor, dtype) -> torch.Tensor:
     return mask[None, None, :, :].expand(B, 1, S, S).contiguous()
 
 
-def prune_after_layer_k(hidden_states, attn_k, position_ids, past_key_values,
-                        spans, cfg, use_cache):
+def prune_after_layer_k(hidden_states, attn_k, spans, cfg):
     """Apply the Stage-2 prune after layer k (prefill only; caller guards seq_len>1).
 
-    Returns (hidden_states, position_ids, attention_mask, past_key_values) for
-    layers k+1..L. The kept tokens are **re-indexed to contiguous positions**
-    (0..keep_len-1) and the KV cache is sliced to the kept tokens, so the pruned
-    sequence behaves as a fresh length-keep_len sequence. (Keeping the original
-    position ids overflows each later layer's RoPE cache, which is sized to the
-    reduced kv length.) attention_mask is a fresh additive causal mask for the
-    reduced length. If there is no text to score with at all, returns inputs
-    unchanged with attention_mask=None (caller keeps its existing mask).
+    FastV-style **NO-SLICE**: drop the low-scoring vision tokens from the hidden
+    states / position_ids / causal mask feeding layers k+1..L, but leave the KV
+    cache untouched. Layers 0..k therefore keep their FULL KV (and full length),
+    so generate()'s past_length (read from layer 0) stays equal to the true
+    sequence length and decode feeds exactly one token (no re-feed). Layers
+    k+1..L build a shorter KV from only the kept tokens — that is where the
+    compute/memory saving comes from (the cache becomes ragged across layers).
+
+    The kept tokens retain their ORIGINAL position ids (gapped); attention among
+    them is causal in kept order (`keep` is ascending). Original positions need
+    the RoPE cache enlarged via install_full_rotary so cos[position] does not
+    overflow on the shorter kv. Returns (hidden_states, position_ids,
+    attention_mask); the KV cache is intentionally NOT touched. If there is no
+    text to score with, returns inputs unchanged with attention_mask=None.
     """
     vs = spans["vision_start"]            # [B]
     nv = spans["vision_len"]
@@ -70,7 +75,7 @@ def prune_after_layer_k(hidden_states, attn_k, position_ids, past_key_values,
     if instr_hi <= instr_lo:              # no post-image instruction tokens
         instr_lo, instr_hi = 0, vstart    # fall back to pre-image text
     if instr_hi <= instr_lo:              # truly no text -> skip prune
-        return hidden_states, position_ids, None, past_key_values
+        return hidden_states, None, None
 
     assert attn_k is not None, (
         "layer-k attention is None — load the model with attn_implementation='eager' "
@@ -80,23 +85,9 @@ def prune_after_layer_k(hidden_states, attn_k, position_ids, past_key_values,
     B, kl = keep.shape
     D = hidden_states.shape[-1]
     hidden_states = hidden_states.gather(1, keep[:, :, None].expand(-1, kl, D))
-    if getattr(cfg, "keep_position_ids", False):
-        # SparseVLM-v2 "Keep Position ID": the kept tokens retain their ORIGINAL
-        # positions (== their absolute indices in `keep`). Requires the RoPE cache
-        # to be enlarged (install_full_rotary) so cos[position_ids] stays in range.
-        position_ids = keep.to(torch.long)
-    else:
-        # Contiguous positions for the reduced sequence (avoids RoPE-cache overflow
-        # without any attention/rotary patch).
-        position_ids = torch.arange(kl, device=hidden_states.device).unsqueeze(0).expand(B, kl)
+    position_ids = keep.to(torch.long)    # ORIGINAL positions (full rotary required)
     attention_mask = _make_causal_mask_like(hidden_states, dtype=hidden_states.dtype)
-    if past_key_values is not None:
-        legacy = past_key_values.to_legacy_cache() \
-            if hasattr(past_key_values, "to_legacy_cache") else past_key_values
-        legacy = slice_past_key_values(legacy, keep)
-        past_key_values = type(past_key_values).from_legacy_cache(legacy) \
-            if hasattr(type(past_key_values), "from_legacy_cache") else legacy
-    return hidden_states, position_ids, attention_mask, past_key_values
+    return hidden_states, position_ids, attention_mask
 
 
 def install_span_recorder(model, cfg):
@@ -174,8 +165,12 @@ def _llama_forward_437(self, cfg, input_ids=None, attention_mask=None,
 
     The KV cache is deliberately NOT sliced: layers 0..k keep their full KV
     (FastV behavior — savings come from layers k+1..L processing fewer tokens),
-    which also keeps decode-time RoPE positions correct (the next-token position
-    continues from the original sequence length via layer-0's cache length).
+    so layer 0's cache length stays equal to the true sequence length and
+    generate() feeds exactly one token per decode step (no re-feed). The kept
+    tokens keep their ORIGINAL position ids, so the RoPE cache must be enlarged
+    (install_full_rotary). The resulting cache is ragged across layers; at decode
+    the attention mask is dropped (a single new token attends to all of each
+    layer's kv anyway) so the one fixed-length 4D mask never has to span both.
 
     transformers-internal imports are deferred so importing this module never
     requires transformers 4.37.2 (keeps the pure-tensor unit tests portable).
@@ -220,23 +215,20 @@ def _llama_forward_437(self, cfg, input_ids=None, attention_mask=None,
     if inputs_embeds is None:
         inputs_embeds = self.embed_tokens(input_ids)
 
-    # Stage-2 pruning shrank the KV cache, but generate() still passes a 2D
-    # attention_mask AND position_ids sized to the ORIGINAL (unpruned) length.
-    # If the mask no longer matches the (pruned) cache length, drop it and
-    # recompute position_ids relative to the pruned cache, so the new token's
-    # RoPE position stays within the (reduced) rotary range.
-    # (batch_size=1 inference: no padding to preserve.)
-    if attention_mask is not None and attention_mask.dim() == 2 \
-            and attention_mask.shape[-1] != past_key_values_length + seq_length:
+    # Stage-2 is NO-SLICE: layers 0..k keep their full KV while layers k+1..L
+    # keep a shorter KV, so the cache is ragged across layers. A single fixed 4D
+    # mask cannot span both — but at decode (seq_len==1) the lone new token
+    # should attend to ALL of each layer's cache, so drop the mask (with
+    # seq_len==1, _prepare_4d_* returns None) and let every layer attend its full
+    # kv. position_ids = the token's TRUE position (full rotary keeps it in
+    # range). Fire only once a prune has happened (_proposed_last_prune set).
+    if seq_length == 1 and past_key_values_length > 0 \
+            and getattr(self, "_proposed_last_prune", None) is not None:
         attention_mask = None
-        # V1 (contiguous) decode: re-derive position relative to the pruned cache.
-        # keep_position_ids=True: leave generate's original-based position_ids
-        # (the enlarged RoPE cache from install_full_rotary keeps it in range).
-        if not getattr(cfg, "keep_position_ids", False):
-            _dev = input_ids.device if input_ids is not None else inputs_embeds.device
-            position_ids = torch.arange(
-                past_key_values_length, seq_length + past_key_values_length,
-                dtype=torch.long, device=_dev).unsqueeze(0)
+        _dev = input_ids.device if input_ids is not None else inputs_embeds.device
+        position_ids = torch.arange(
+            past_key_values_length, seq_length + past_key_values_length,
+            dtype=torch.long, device=_dev).unsqueeze(0)
 
     if getattr(self, "_use_flash_attention_2", False):
         attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
@@ -272,14 +264,15 @@ def _llama_forward_437(self, cfg, input_ids=None, attention_mask=None,
         spans = getattr(self, "_proposed_spans", None)
         if idx == cfg.pruned_layer and spans is not None and hidden_states.shape[1] > 1:
             _s_before = int(hidden_states.shape[1])
-            _hs, _pos, _mask, _pkv = prune_after_layer_k(
-                hidden_states, layer_outputs[1], position_ids, past_key_values, spans,
-                cfg, use_cache)
-            hidden_states, position_ids = _hs, _pos
+            _hs, _pos, _mask = prune_after_layer_k(
+                hidden_states, layer_outputs[1], spans, cfg)
+            hidden_states = _hs
+            if _pos is not None:        # None only when there was no text to score
+                position_ids = _pos
             if _mask is not None:
                 attention_mask = _mask
-            if _pkv is not None:
-                past_key_values = _pkv   # sliced cache -> decode positions stay in range
+            # The KV cache is deliberately left intact (no-slice); layers k+1..L
+            # below simply append shorter KVs for the kept tokens.
             # Persistent proof the prune fired (survives decode steps, unlike
             # _proposed_spans which the span recorder resets each decode token).
             self._proposed_last_prune = {"layer": idx, "seq_before": _s_before,

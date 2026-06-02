@@ -37,10 +37,10 @@ def proposed_prune(model, cfg):
 
     stage2_llm.install_span_recorder(model, cfg)
 
-    # keep_position_ids mode keeps kept tokens' original positions, which needs
-    # the RoPE cache enlarged so cos[position_ids] does not overflow.
-    if getattr(cfg, "keep_position_ids", False):
-        stage2_llm.install_full_rotary(model.config.max_position_embeddings)
+    # No-slice Stage 2 keeps the kept tokens' ORIGINAL position ids, so the RoPE
+    # cache must cover the full position range (layers k+1..L hold a short kv but
+    # see large positions); enlarge it so cos[position_ids] never overflows.
+    stage2_llm.install_full_rotary(model.config.max_position_embeddings)
 
     from transformers.models.llama.modeling_llama import LlamaModel
     LlamaModel.forward = stage2_llm.make_llama_forward(cfg)

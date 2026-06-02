@@ -12,10 +12,10 @@ class ProposedConfig:
     diversity_m: int = 10    # Stage 1: diversity top-up (R1 = dominant_k + diversity_m)
     pruned_layer: int = 12   # Stage 2: LLM layer whose attention drives scoring
     llm_keep_r2: int = 37    # Stage 2: vision tokens kept after layer k
-    keep_position_ids: bool = False  # Stage 2 RoPE mode (both GPU-validated):
-    #   False = re-index kept tokens to contiguous positions (FastV/SparseVLM-v1);
-    #   True = keep original position ids (SparseVLM-v2 "Keep Position ID") +
-    #   enlarge the RoPE cache so cos[position_ids] does not overflow.
+    keep_position_ids: bool = False  # DEPRECATED / no-op. Stage 2 is now always
+    #   no-slice + original position ids + full rotary (the only correct decode
+    #   path). Kept as a field so old configs/from_args still parse; the forward
+    #   ignores it.
     stage2_enabled: bool = True  # Run the Stage-2 LLM mid-layer prune.
     #   When False, only Stage 1 (vision-tower) pruning applies: every LLM layer
     #   then processes R1 visual tokens with a NORMAL (unpruned) KV cache, so
