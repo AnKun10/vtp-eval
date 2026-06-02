@@ -64,11 +64,11 @@ def test_metric_value_ignores_bool_and_stderr():
 
 
 def test_aggregate_one_run(tmp_path):
-    run = tmp_path / "proposed_x"
-    run.mkdir()
-    (run / "results.json").write_text(json.dumps(
+    cell = tmp_path / "proposed_x" / "pope"      # results/<run>/<task>/
+    cell.mkdir(parents=True)
+    (cell / "results.json").write_text(json.dumps(
         {"results": {"pope": {"pope_f1_score,none": 0.88, "pope_accuracy,none": 0.85}}}))
-    (run / "timing.json").write_text(json.dumps(
+    (cell / "timing.json").write_text(json.dumps(
         {"encoder_ms": 5.0, "prefill_ms": 20.0, "decode_ms": 30.0,
          "total_latency_ms": 55.0, "decode_tokens": 3.0, "peak_mem_mb": 120.0,
          "pruning_meta": {"method": "proposed", "avg_tokens": 64}}))
@@ -80,5 +80,29 @@ def test_aggregate_one_run(tmp_path):
     assert r["metric"] == "pope_f1_score" and float(r["value"]) == 0.88
     assert float(r["keep_ratio_pct"]) == round(64 / 576 * 100, 2)
     assert float(r["prefill_ms"]) == 20.0
-    assert float(r["total_ms"]) == 55.0   # timing total_latency_ms -> total_ms
+    assert float(r["total_ms"]) == 55.0
     assert out_csv.exists()
+
+
+def test_aggregate_two_level_multitask_and_mme(tmp_path):
+    run = tmp_path / "proposed"
+    timing = {"encoder_ms": 5.0, "prefill_ms": 20.0, "decode_ms": 30.0,
+              "total_latency_ms": 55.0, "decode_tokens": 1.0, "peak_mem_mb": 120.0,
+              "pruning_meta": {"method": "proposed", "avg_tokens": 64}}
+    pope = run / "pope"; pope.mkdir(parents=True)
+    (pope / "results.json").write_text(json.dumps(
+        {"results": {"pope": {"pope_f1_score,none": 0.76}}}))
+    (pope / "timing.json").write_text(json.dumps(timing))
+    mme = run / "mme"; mme.mkdir(parents=True)
+    (mme / "results.json").write_text(json.dumps(
+        {"results": {"mme": {"mme_perception_score,none": 1500.0,
+                             "mme_cognition_score,none": 350.0}}}))
+    (mme / "timing.json").write_text(json.dumps(timing))
+    rows = report.aggregate(tmp_path, tmp_path / "summary.csv")
+    pairs = {(r["task"], r["metric"]) for r in rows}
+    assert ("pope", "pope_f1_score") in pairs
+    assert ("mme", "mme_perception") in pairs
+    assert ("mme", "mme_total") in pairs
+    mt = next(r for r in rows if r["metric"] == "mme_total")
+    assert float(mt["value"]) == 1850.0
+    assert mt["method"] == "proposed" and float(mt["prefill_ms"]) == 20.0

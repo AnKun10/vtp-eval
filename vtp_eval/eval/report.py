@@ -109,32 +109,34 @@ def aggregate(results_dir: Path, output_csv: Path) -> List[Dict]:
     results_dir = Path(results_dir)
     rows: List[Dict] = []
     for run_dir in sorted(p for p in results_dir.iterdir() if p.is_dir()):
-        rj, tj = run_dir / "results.json", run_dir / "timing.json"
-        if not rj.exists():
-            continue
-        results = json.loads(rj.read_text(encoding="utf-8")).get("results", {})
-        timing = json.loads(tj.read_text(encoding="utf-8")) if tj.exists() else {}
-        meta = timing.get("pruning_meta", {"method": run_dir.name})
-        avg_tokens = float(meta.get("avg_tokens", 576))
-        for task, task_res in results.items():
-            try:
-                metric, value = pick_primary_metric(task_res)
-            except ValueError:
+        for task_dir in sorted(p for p in run_dir.iterdir() if p.is_dir()):
+            rj, tj = task_dir / "results.json", task_dir / "timing.json"
+            if not rj.exists():
                 continue
-            rows.append({
-                "method": meta.get("method", run_dir.name),
-                "task": task,
-                "metric": metric,
-                "value": round(value, 4),
-                "avg_tokens": round(avg_tokens, 1),
-                "keep_ratio_pct": round(avg_tokens / 576 * 100, 2),
-                "encoder_ms": round(timing.get("encoder_ms", 0.0), 3),
-                "prefill_ms": round(timing.get("prefill_ms", 0.0), 3),
-                "decode_ms": round(timing.get("decode_ms", 0.0), 3),
-                "total_ms": round(timing.get("total_latency_ms", 0.0), 3),
-                "peak_mem_mb": round(timing.get("peak_mem_mb", 0.0), 1),
-                "tflops": round(estimate_tflops(avg_tokens), 3),
-            })
+            results = json.loads(rj.read_text(encoding="utf-8")).get("results", {})
+            timing = json.loads(tj.read_text(encoding="utf-8")) if tj.exists() else {}
+            meta = timing.get("pruning_meta", {"method": run_dir.name})
+            avg_tokens = float(meta.get("avg_tokens", 576))
+            for task, task_res in results.items():
+                try:
+                    metrics = select_metrics(task, task_res)
+                except (ValueError, KeyError):
+                    continue
+                for metric, value in metrics:
+                    rows.append({
+                        "method": meta.get("method", run_dir.name),
+                        "task": task,
+                        "metric": metric,
+                        "value": round(value, 4),
+                        "avg_tokens": round(avg_tokens, 1),
+                        "keep_ratio_pct": round(avg_tokens / 576 * 100, 2),
+                        "encoder_ms": round(timing.get("encoder_ms", 0.0), 3),
+                        "prefill_ms": round(timing.get("prefill_ms", 0.0), 3),
+                        "decode_ms": round(timing.get("decode_ms", 0.0), 3),
+                        "total_ms": round(timing.get("total_latency_ms", 0.0), 3),
+                        "peak_mem_mb": round(timing.get("peak_mem_mb", 0.0), 1),
+                        "tflops": round(estimate_tflops(avg_tokens), 3),
+                    })
     cols = ["method", "task", "metric", "value", "avg_tokens", "keep_ratio_pct",
             "encoder_ms", "prefill_ms", "decode_ms", "total_ms", "peak_mem_mb", "tflops"]
     Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
