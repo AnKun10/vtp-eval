@@ -33,7 +33,7 @@ class LlavaProposed(LlavaPruningBase):
         cfg.validate(num_llm_layers=n_layers)
         self._model = proposed_prune(self._model, cfg)
         self.pruning_meta = {
-            "method": "proposed",
+            "method": "proposed" if cfg.stage2_enabled else "proposed_s1",
             **cfg.as_dict(),
             "R1": cfg.r1,
             "avg_tokens": cfg.avg_tokens(n_layers),

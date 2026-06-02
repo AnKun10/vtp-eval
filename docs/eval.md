@@ -7,14 +7,13 @@ budget, and a theoretical-TFLOPs estimate. Design:
 `docs/superpowers/specs/2026-06-02-lmms-eval-benchmark-harness-design.md`.
 
 ## What it benchmarks
-`configs/eval.yaml` runs: `baseline` (vanilla) and `proposed_stage1_R1-64`
-(Stage-1 vision prune only, 576→64). The full Stage-2 variants
-(`proposed_R1-64_R2-37_k12`, `proposed_keeppos`) are present but **commented out**:
-Stage 2's decode path re-feeds tokens (pruned KV cache vs `generate`'s token
-bookkeeping), which corrupts decode latency; re-enable after that is reworked to
-no-slice + full-rotary. Add runs/benchmarks by editing the `runs` / `tasks`
-lists. Other methods (VisionZip/FastV/…) are compared via their published
-numbers (out of scope here).
+`configs/eval.yaml` runs: `baseline` (vanilla), `proposed_stage1_R1-64`
+(Stage-1 vision prune only, 576→64 — clean ablation) and
+`proposed_R1-64_R2-37_k12` (full Stage 1+2). Stage 2 uses the FastV no-slice
+decode path (KV cache untouched, original positions + full rotary), GPU-verified
+to keep decode at seq==1 (no re-feed) so decode latency measures correctly. Add
+runs/benchmarks by editing the `runs` / `tasks` lists. Other methods
+(VisionZip/FastV/…) are compared via their published numbers (out of scope here).
 
 ## Run on Vast.ai
 1. Rent with the proposed-method template (py310/torch-2.1.2 image + the §2
