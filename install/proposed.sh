@@ -87,12 +87,21 @@ transformers==4.37.2
 tokenizers==0.15.1
 accelerate==0.26.1
 numpy==1.26.4
+huggingface_hub==0.36.2
+datasets==2.20.0
 C
+    # huggingface_hub MUST stay <1.0 (transformers 4.37.2 / tokenizers 0.15.1
+    # hard-require it) and datasets <2.21 — newer `datasets`/`evaluate` otherwise
+    # drag in huggingface_hub>=1.0 and break the import. Pin both explicitly.
     pip install --no-cache-dir -c "$CONSTRAINTS" \
-        sqlitedict "datasets>=2.16,<2.21" tenacity pytablewriter sacrebleu evaluate \
+        "huggingface_hub==0.36.2" "datasets==2.20.0" \
+        sqlitedict tenacity pytablewriter sacrebleu evaluate \
         hf_transfer loguru openai jsonlines numexpr peft scikit-learn ftfy \
         opencv-python-headless nltk tqdm-multiprocess zstandard sympy mpmath \
         openpyxl tiktoken pydantic python-dotenv timm jinja2 protobuf
+    # Belt-and-suspenders: if a transitive dep still bumped it, force it back.
+    python -c "import importlib.metadata as m,sys; sys.exit(0 if m.version('huggingface_hub').startswith('0.') else 1)" \
+        || pip install --no-cache-dir --force-reinstall --no-deps "huggingface_hub==0.36.2"
 fi
 
 echo "[install/proposed] done. transformers=$(python -c 'import transformers;print(transformers.__version__)')"
