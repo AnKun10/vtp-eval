@@ -4,15 +4,10 @@ common_args: { attn_implementation: eager }   # proposed needs eager; baseline o
 tasks: [pope]                                  # add gqa/textvqa/mme/... here
 batch_size: 1                                  # clean per-sample timing; proposed assumes bs=1
 runs:
-  - { name: baseline,            model: llava_baseline, model_args: {} }
-  # Stage-1-only (vision-tower prune, 576 -> R1=64). Stage 2 is OFF for now: its
-  # decode path re-feeds tokens (pruned KV cache vs generate's token bookkeeping),
-  # which breaks decode latency and the O(1)-per-token decode claim. Fix planned:
-  # no-slice + full-rotary (FastV-style). Re-enable the variants below after.
+  - { name: baseline,              model: llava_baseline, model_args: {} }
+  # Stage-1-only ablation (vision-tower prune, 576 -> R1=64; normal KV cache).
   - { name: proposed_stage1_R1-64, model: llava_proposed,
       model_args: { dominant_k: 54, diversity_m: 10, stage2_enabled: false } }
-  # PENDING Stage-2 decode fix — re-enable once decode is seq=1 clean:
-  # - { name: proposed_R1-64_R2-37_k12, model: llava_proposed,
-  #     model_args: { dominant_k: 54, diversity_m: 10, pruned_layer: 12, llm_keep_r2: 37 } }
-  # - { name: proposed_keeppos,         model: llava_proposed,
-  #     model_args: { dominant_k: 54, diversity_m: 10, pruned_layer: 12, llm_keep_r2: 37, keep_position_ids: true } }
+  # Full Stage 1+2 (no-slice decode: GPU-validated, decode stays seq==1).
+  - { name: proposed_R1-64_R2-37_k12, model: llava_proposed,
+      model_args: { dominant_k: 54, diversity_m: 10, pruned_layer: 12, llm_keep_r2: 37 } }
