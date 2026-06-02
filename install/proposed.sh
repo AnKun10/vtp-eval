@@ -71,10 +71,12 @@ if [ "${INSTALL_LMMS:-1}" = "1" ]; then
     LMMS_DIR="$WORKSPACE/lmms-eval"
     [ -d "$LMMS_DIR" ] || git clone https://github.com/EvolvingLMMs-Lab/lmms-eval.git "$LMMS_DIR"
     ( cd "$LMMS_DIR" && git checkout v0.5 )
-    # POPE task yamls hardcode `token: True`, which makes datasets require a
-    # cached HF token even though lmms-lab/POPE is public. Flip to False so the
-    # dataset loads anonymously (no HF login needed on a fresh instance).
-    sed -i 's/token: True/token: False/' "$LMMS_DIR"/lmms_eval/tasks/pope/*.yaml || true
+    # These task yamls hardcode `token: True`, which forces datasets to require a
+    # cached HF token even though the lmms-lab/* datasets are public. Flip to
+    # False so they load anonymously (no HF login needed on a fresh instance).
+    for d in pope gqa textvqa mme mmbench scienceqa vizwiz_vqa; do
+        sed -i 's/token: True/token: False/' "$LMMS_DIR"/lmms_eval/tasks/$d/*.yaml 2>/dev/null || true
+    done
     pip install -e "$LMMS_DIR" --no-deps
     # lmms-eval v0.5 pulls transformers>=4.39 / accelerate>=0.29 — those would break
     # our 4.37.2 Stage-2 port, so we install its runtime deps under a constraints
