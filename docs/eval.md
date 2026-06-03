@@ -58,3 +58,11 @@ contributes two rows** — `mme_perception` and `mme_total` (perception + cognit
 ## Cross-references
 - `docs/vast_proposed_method.md` — the env this installs into.
 - `vtp_eval/eval/` — harness source; `vtp_eval/adapters/` — lmms-eval adapters.
+
+## Visualizing token pruning (insight/prune_viz)
+`python -m vtp_eval.insight.prune_viz --list-samples` fetches a few samples per
+benchmark (streaming, partial — set counts in `configs/prune_viz.yaml`), then:
+- Exp 2: `--dataset gqa --index 2 --mode exp2 --r1 64` → original | attention-only | diversity-only.
+- Exp 3: `--dataset textvqa --index 0 --mode exp3 --dominant-k 54 --diversity-m 10 --r2 37` → original | R1 | R2.
+PNGs land in `outputs/prune_viz/`. Viz uses its own `output_attentions` forward +
+the pure `selection.py` helpers — it does not touch the eval/inference path.
