@@ -13,6 +13,7 @@ from vtp_eval.proposed_method.selection import (cls_topk_dominant,
                                                 farthest_point_diversity,
                                                 select_stage1,
                                                 text_to_vision_scores)
+from vtp_eval.proposed_method import stage1_vision
 
 
 def load_model(model_path: str = "liuhaotian/llava-v1.5-7b"):
@@ -51,9 +52,6 @@ def r1_selections(attn_penult, hidden_penult, r1: int, dominant_k: int,
     return {"attention": attention_only.sort().values,
             "diversity": diversity_only.sort().values,
             "combined": combined}
-
-
-from vtp_eval.proposed_method import stage1_vision
 
 
 @torch.no_grad()

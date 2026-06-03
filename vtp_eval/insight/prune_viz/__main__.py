@@ -39,7 +39,12 @@ def parse_args(argv=None):
     return p.parse_args(argv)
 
 
-def _candidates(cfg) -> dict:
+def _candidates(cfg, refresh: bool = False) -> dict:
+    """Fetch (and cache) sample candidates per dataset. Reuses a prior
+    candidates.json unless refresh=True or it is absent."""
+    cand_path = SAMPLE_DIR / "candidates.json"
+    if cand_path.exists() and not refresh:
+        return json.loads(cand_path.read_text())
     specs = resolve_specs(cfg)
     SAMPLE_DIR.mkdir(parents=True, exist_ok=True)
     table = {}
@@ -48,7 +53,7 @@ def _candidates(cfg) -> dict:
             table[name] = fetch_samples(spec, SAMPLE_DIR / name)
         except Exception as e:        # one bad dataset shouldn't kill the rest
             print(f"[warn] {name}: {type(e).__name__}: {e}")
-    (SAMPLE_DIR / "candidates.json").write_text(json.dumps(table, indent=2))
+    cand_path.write_text(json.dumps(table, indent=2))
     return table
 
 
@@ -57,7 +62,7 @@ def main(argv=None) -> None:
     cfg = yaml.safe_load(Path(args.config).read_text())
     out_dir = Path(args.out_dir); out_dir.mkdir(parents=True, exist_ok=True)
 
-    table = _candidates(cfg)
+    table = _candidates(cfg, refresh=args.list_samples)
     if args.list_samples:
         for name, rows in table.items():
             print(f"\n=== {name} ({len(rows)}) ===")
@@ -72,6 +77,11 @@ def main(argv=None) -> None:
     if not (0 <= args.index < len(rows)):
         raise SystemExit(f"--index out of range [0, {len(rows) - 1}]")
     sample = rows[args.index]
+
+    if args.r1 != args.dominant_k + args.diversity_m:
+        print(f"[warn] --r1 ({args.r1}) != --dominant-k + --diversity-m "
+              f"({args.dominant_k + args.diversity_m}); exp2 renders R1={args.r1}, "
+              f"exp3 renders R1={args.dominant_k + args.diversity_m}")
 
     # Heavy imports deferred so --list-samples never needs torch/llava.
     from PIL import Image
