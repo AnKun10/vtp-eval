@@ -20,3 +20,11 @@ runs:
       model_args: { dominant_k: 95,  diversity_m: 10, pruned_layer: 12, llm_keep_r2: 35 } }
   - { name: proposed_avg128_3to1, model: llava_proposed,
       model_args: { dominant_k: 192, diversity_m: 21, pruned_layer: 12, llm_keep_r2: 71 } }
+  # Exp 1 — diversity-ratio ablation at avg-64 (R1=105, R2=35, R1:R2=3:1);
+  # vary only the dominant/diversity split of R1.
+  - { name: proposed_div10_avg64, model: llava_proposed,
+      model_args: { dominant_k: 95, diversity_m: 10, pruned_layer: 12, llm_keep_r2: 35 } }
+  - { name: proposed_div20_avg64, model: llava_proposed,
+      model_args: { dominant_k: 84, diversity_m: 21, pruned_layer: 12, llm_keep_r2: 35 } }
+  - { name: proposed_div30_avg64, model: llava_proposed,
+      model_args: { dominant_k: 74, diversity_m: 31, pruned_layer: 12, llm_keep_r2: 35 } }
