@@ -9,8 +9,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from vtp_eval.proposed_method.selection import (build_keep_index,
-                                                cls_topk_dominant,
+from vtp_eval.proposed_method.selection import (cls_topk_dominant,
                                                 farthest_point_diversity,
                                                 select_stage1,
                                                 text_to_vision_scores)
@@ -54,7 +53,7 @@ def r1_selections(attn_penult, hidden_penult, r1: int, dominant_k: int,
             "combined": combined}
 
 
-from vtp_eval.proposed_method import stage1_vision, stage2_llm
+from vtp_eval.proposed_method import stage1_vision
 
 
 @torch.no_grad()
