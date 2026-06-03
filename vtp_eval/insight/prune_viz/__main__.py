@@ -74,7 +74,6 @@ def main(argv=None) -> None:
     sample = rows[args.index]
 
     # Heavy imports deferred so --list-samples never needs torch/llava.
-    import torch
     from PIL import Image
     from llava.mm_utils import process_images
     from vtp_eval.proposed_method.config import ProposedConfig
