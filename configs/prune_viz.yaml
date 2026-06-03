@@ -1,0 +1,11 @@
+# prune_viz sample sources (field coverage = the 7 benchmark domains).
+# `n` per dataset overrides samples_per_dataset. Keys verified on the box.
+samples_per_dataset: 5
+datasets:
+  pope:      { hf: lmms-lab/POPE,         split: test,       image_key: image, q_key: question }
+  gqa:       { hf: lmms-lab/GQA,          split: testdev,    image_key: image, q_key: question }
+  textvqa:   { hf: lmms-lab/textvqa,      split: validation, image_key: image, q_key: question }
+  mme:       { hf: lmms-lab/MME,          split: test,       image_key: image, q_key: question }
+  scienceqa: { hf: lmms-lab/ScienceQA,    split: test,       image_key: image, q_key: question }
+  vizwiz:    { hf: lmms-lab/VizWiz-VQA,   split: val,        image_key: image, q_key: question }
+  ocrbench:  { hf: echo840/OCRBench,      split: test,       image_key: image, q_key: question }
