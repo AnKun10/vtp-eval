@@ -67,6 +67,7 @@ TASK_PRIMARY = {
     "textvqa_val": "exact_match",
     "scienceqa_img": "exact_match",
     "vizwiz_vqa_val": "exact_match",
+    "ocrbench": "ocrbench_accuracy",
     "mme": ("mme_perception_score", "mme_cognition_score"),  # special-cased
     # mmbench_en_dev intentionally absent: its metric is gpt_eval_score (needs an
     # OpenAI API key), so it is out of the default set for now.

@@ -82,7 +82,7 @@ if [ "${INSTALL_LMMS:-1}" = "1" ]; then
     # in the task yaml (`token: True`) AND in Python (`token=True` in utils.py,
     # e.g. gqa loads its images config there). Flip both to False so everything
     # loads anonymously (no HF login needed on a fresh instance).
-    for d in pope gqa textvqa mme mmbench scienceqa vizwiz_vqa; do
+    for d in pope gqa textvqa mme mmbench scienceqa vizwiz_vqa ocrbench; do
         sed -i 's/token: True/token: False/g; s/token: true/token: false/g' \
             "$LMMS_DIR"/lmms_eval/tasks/$d/*.yaml 2>/dev/null || true
         sed -i 's/token=True/token=False/g' \
