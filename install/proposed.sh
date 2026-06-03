@@ -111,7 +111,7 @@ C
         sqlitedict tenacity pytablewriter sacrebleu evaluate \
         hf_transfer loguru openai jsonlines numexpr peft scikit-learn ftfy \
         opencv-python-headless nltk tqdm-multiprocess zstandard sympy mpmath \
-        openpyxl tiktoken pydantic python-dotenv timm jinja2 protobuf
+        openpyxl tiktoken pydantic python-dotenv timm jinja2 protobuf "matplotlib>=3.7"
     # Belt-and-suspenders: if a transitive dep still bumped it, force it back.
     python -c "import importlib.metadata as m,sys; sys.exit(0 if m.version('huggingface_hub').startswith('0.') else 1)" \
         || pip install --no-cache-dir --force-reinstall --no-deps "huggingface_hub==0.36.2"
