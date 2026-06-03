@@ -52,3 +52,41 @@ def r1_selections(attn_penult, hidden_penult, r1: int, dominant_k: int,
     return {"attention": attention_only.sort().values,
             "diversity": diversity_only.sort().values,
             "combined": combined}
+
+
+from vtp_eval.proposed_method import stage1_vision, stage2_llm
+
+
+@torch.no_grad()
+def r2_selection(tok, model, image_tensor, question, cfg, r1_combined_patches):
+    """Run a SINGLE viz-only forward with the vision tower emitting R1 features,
+    capture layer-12 text->vision attention, return the R2 keep set mapped back
+    to original patch indices ([r2]).
+
+    cfg: ProposedConfig (dominant_k/diversity_m/pruned_layer/llm_keep_r2).
+    r1_combined_patches: [r1] original patch indices kept by Stage 1 (sorted).
+    Restores the vision tower forward afterwards (no lasting hook).
+    """
+    from llava.constants import IMAGE_TOKEN_INDEX
+    from llava.mm_utils import tokenizer_image_token
+
+    vt = model.get_model().get_vision_tower()
+    orig_fwd = vt.forward
+    vt.forward = stage1_vision.make_forward(cfg).__get__(vt, type(vt))  # Stage-1 -> R1
+    try:
+        prompt = f"USER: <image>\n{question} ASSISTANT:"
+        ids = tokenizer_image_token(prompt, tok, IMAGE_TOKEN_INDEX,
+                                    return_tensors="pt").unsqueeze(0).to(model.device)
+        out = model(ids, images=image_tensor.to(model.device, dtype=vt.dtype),
+                    image_sizes=[(336, 336)], output_attentions=True, use_cache=False)
+        attn_k = out.attentions[cfg.pruned_layer]                  # [1,H,S,S]
+    finally:
+        vt.forward = orig_fwd
+
+    S = attn_k.shape[-1]
+    nv = cfg.r1
+    vstart = int((ids[0] == IMAGE_TOKEN_INDEX).float().argmax())   # image-token pos
+    instr_lo, instr_hi = vstart + nv, S
+    scores = text_to_vision_scores(attn_k, (vstart, vstart + nv), (instr_lo, instr_hi))
+    top_local = scores.topk(cfg.llm_keep_r2, dim=1).indices[0]     # [r2] indices into R1
+    return r1_combined_patches[top_local.cpu()].sort().values     # -> original patches
