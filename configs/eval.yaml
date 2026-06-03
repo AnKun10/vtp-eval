@@ -31,3 +31,8 @@ runs:
       model_args: { dominant_k: 84, diversity_m: 21, pruned_layer: 12, llm_keep_r2: 35 } }
   - { name: proposed_div30_avg64, model: llava_proposed,
       model_args: { dominant_k: 74, diversity_m: 31, pruned_layer: 12, llm_keep_r2: 35 } }
+  # Extended ablation: diversity hasn't plateaued at 30% — probe 40% / 50%.
+  - { name: proposed_div40_avg64, model: llava_proposed,
+      model_args: { dominant_k: 63, diversity_m: 42, pruned_layer: 12, llm_keep_r2: 35 } }
+  - { name: proposed_div50_avg64, model: llava_proposed,
+      model_args: { dominant_k: 52, diversity_m: 53, pruned_layer: 12, llm_keep_r2: 35 } }
