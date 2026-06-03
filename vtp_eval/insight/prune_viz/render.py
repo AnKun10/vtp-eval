@@ -55,6 +55,7 @@ def plot_prune_row(image, panels, titles, out_path: Path, suptitle: str = "") ->
     import matplotlib.pyplot as plt
     n = 1 + len(panels)
     fig, axes = plt.subplots(1, n, figsize=(4 * n, 4))
+    axes = np.atleast_1d(axes)
     axes[0].imshow(image)
     axes[0].set_title("Original", fontsize=13)
     axes[0].set_xticks([]); axes[0].set_yticks([])
