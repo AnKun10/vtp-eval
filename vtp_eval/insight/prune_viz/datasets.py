@@ -14,12 +14,13 @@ class DatasetSpec:
     n: int
     image_key: str = "image"
     q_key: str = "question"
+    config: str = None          # HF dataset config name (e.g. GQA/ScienceQA multi-config)
 
 
 def resolve_specs(cfg: dict) -> Dict[str, DatasetSpec]:
     """Turn a prune_viz.yaml dict into {name: DatasetSpec}. `n` defaults to
-    samples_per_dataset; image_key/q_key default to image/question. `hf` is
-    required (KeyError if missing)."""
+    samples_per_dataset; image_key/q_key default to image/question; `config` is
+    optional (HF config name). `hf` is required (KeyError if missing)."""
     default_n = int(cfg.get("samples_per_dataset", 5))
     out: Dict[str, DatasetSpec] = {}
     for name, d in (cfg.get("datasets") or {}).items():
@@ -30,6 +31,7 @@ def resolve_specs(cfg: dict) -> Dict[str, DatasetSpec]:
             n=int(d.get("n", default_n)),
             image_key=d.get("image_key", "image"),
             q_key=d.get("q_key", "question"),
+            config=d.get("config"),
         )
     return out
 
@@ -42,7 +44,7 @@ def fetch_samples(spec: DatasetSpec, out_dir: Path) -> list:
     """
     from datasets import load_dataset
     out_dir.mkdir(parents=True, exist_ok=True)
-    ds = load_dataset(spec.hf, split=spec.split, streaming=True)
+    ds = load_dataset(spec.hf, name=spec.config, split=spec.split, streaming=True)
     rows = []
     for idx, row in enumerate(ds):
         if idx >= spec.n:

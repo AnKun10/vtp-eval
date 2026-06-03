@@ -13,6 +13,13 @@ def test_resolve_specs_applies_default_n(tmp_path):
     assert specs["gqa"].image_key == "image"
     assert specs["pope"].image_key == "image"     # default key
     assert specs["pope"].q_key == "question"      # default key
+    assert specs["pope"].config is None           # optional HF config name
+
+
+def test_resolve_specs_reads_optional_config():
+    cfg = {"datasets": {"scienceqa": {"hf": "lmms-lab/ScienceQA",
+                                      "config": "ScienceQA-IMG", "split": "test"}}}
+    assert datasets.resolve_specs(cfg)["scienceqa"].config == "ScienceQA-IMG"
 
 
 def test_resolve_specs_requires_hf_path():
