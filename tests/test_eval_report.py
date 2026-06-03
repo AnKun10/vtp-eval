@@ -82,7 +82,7 @@ def test_aggregate_one_run(tmp_path):
     rows = report.aggregate(tmp_path, out_csv)
     assert len(rows) == 1
     r = rows[0]
-    assert r["method"] == "proposed" and r["task"] == "pope"
+    assert r["method"] == "proposed_x" and r["task"] == "pope"
     assert r["metric"] == "pope_f1_score" and float(r["value"]) == 0.88
     assert float(r["keep_ratio_pct"]) == round(64 / 576 * 100, 2)
     assert float(r["prefill_ms"]) == 20.0
@@ -114,3 +114,4 @@ def test_aggregate_two_level_multitask_and_mme(tmp_path):
     mt = next(r for r in rows if r["metric"] == "mme_total")
     assert float(mt["value"]) == 1850.0
     assert mt["method"] == "proposed" and float(mt["prefill_ms"]) == 20.0
+    assert all(r["method"] == "proposed" for r in rows)   # method == run-dir name

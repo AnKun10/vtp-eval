@@ -140,7 +140,7 @@ def aggregate(results_dir: Path, output_csv: Path) -> List[Dict]:
                     continue
                 for metric, value in metrics:
                     rows.append({
-                        "method": meta.get("method", run_dir.name),
+                        "method": run_dir.name,   # unique + self-identifying per run
                         "task": task,
                         "metric": metric,
                         "value": round(value, 4),
