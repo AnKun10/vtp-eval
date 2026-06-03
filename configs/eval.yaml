@@ -12,14 +12,15 @@ runs:
   # Full Stage 1+2 (no-slice decode: GPU-validated, decode stays seq==1).
   - { name: proposed_R1-64_R2-37_k12, model: llava_proposed,
       model_args: { dominant_k: 54, diversity_m: 10, pruned_layer: 12, llm_keep_r2: 37 } }
-  # LearnPruner-matched settings: R1:R2 = 3:1, prune@layer 12, diversity ~10% R1,
-  # at average-token budgets 32 / 64 / 128 across the 32 LLM layers (5.7/11/22%).
+  # Final settings: R1:R2 = 3:1, prune@layer 12, at average-token budgets
+  # 32 / 64 / 128 (5.7/11/22%). Diversity = 50% of R1 (ablation winner — accuracy
+  # rises with diversity, plateaus ~40-50%; see div10..div50 ablation runs below).
   - { name: proposed_avg32_3to1,  model: llava_proposed,
-      model_args: { dominant_k: 49,  diversity_m: 5,  pruned_layer: 12, llm_keep_r2: 18 } }
+      model_args: { dominant_k: 27,  diversity_m: 27,  pruned_layer: 12, llm_keep_r2: 18 } }
   - { name: proposed_avg64_3to1,  model: llava_proposed,
-      model_args: { dominant_k: 95,  diversity_m: 10, pruned_layer: 12, llm_keep_r2: 35 } }
+      model_args: { dominant_k: 52,  diversity_m: 53,  pruned_layer: 12, llm_keep_r2: 35 } }
   - { name: proposed_avg128_3to1, model: llava_proposed,
-      model_args: { dominant_k: 192, diversity_m: 21, pruned_layer: 12, llm_keep_r2: 71 } }
+      model_args: { dominant_k: 106, diversity_m: 107, pruned_layer: 12, llm_keep_r2: 71 } }
   # Exp 1 — diversity-ratio ablation at avg-64 (R1=105, R2=35, R1:R2=3:1);
   # vary only the dominant/diversity split of R1.
   # NOTE: div10 is identical to proposed_avg64_3to1 above (dominant 95 / div 10 /
