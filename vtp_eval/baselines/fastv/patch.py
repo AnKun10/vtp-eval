@@ -30,6 +30,8 @@ class FastVConfig:
         return NUM_PATCHES   # no Stage-1 vision prune
 
     def avg_tokens(self, num_layers: int) -> float:
+        # Mirrors ProposedConfig.avg_tokens (enabled branch): layers 0..k run at
+        # r1 (=576 here), layers k+1..L-1 run at llm_keep_r2. Keep the two in sync.
         k = self.pruned_layer
         return ((k + 1) * self.r1 + (num_layers - k - 1) * self.llm_keep_r2) / num_layers
 

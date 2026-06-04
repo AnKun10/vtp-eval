@@ -13,7 +13,9 @@ class LlavaFastV(LlavaPruningBase):
                  avg_tokens: int = 64, agg_layer: int = 2, **kw):
         super().__init__(pretrained=pretrained, **kw)
         k, r = fastv_knobs(int(avg_tokens), k=int(agg_layer))   # raises below floor
-        cfg = FastVConfig(pruned_layer=k, llm_keep_r2=r)
+        # FastV agg_layer K = K full layers; our forward prunes AFTER layer index
+        # `pruned_layer`, giving pruned_layer+1 full layers -> pruned_layer = K-1.
+        cfg = FastVConfig(pruned_layer=k - 1, llm_keep_r2=r)
         n_layers = self._model.config.num_hidden_layers
         self._model = fastv_prune(self._model, cfg)
         self.pruning_meta = {"method": "fastv", "K": k, "R": r,
