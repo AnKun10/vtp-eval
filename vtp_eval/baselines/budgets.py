@@ -1,8 +1,8 @@
 """Map an average-token budget (avg over 32 LLM layers) to each baseline's knobs.
 
 Vision-only methods (VisionZip, DivPrune) keep a constant N tokens across every
-layer, so avg == N. FastV keeps 576 until layer K then R after, so
-avg = (K*576 + (L-K)*R)/L with L=32.
+layer, so avg == N. For FastV, use FastVConfig.avg_tokens(num_layers) directly —
+the true avg (which drives TFLOPs) is computed from pruned_layer and retain_tokens.
 """
 from __future__ import annotations
 
@@ -21,21 +21,3 @@ def visionzip_knobs(avg_budget: int) -> tuple[int, int]:
     contextual = max(1, round(avg_budget * VISIONZIP_CONTEXTUAL_FRACTION))
     dominant = avg_budget - contextual
     return dominant, contextual
-
-
-def fastv_knobs(avg_budget: int, k: int = 2) -> tuple[int, int]:
-    """(K, R): R = number of image tokens kept after layer K.
-
-    Raises ValueError if K is out of range, or if the budget would require
-    R < 1 (no visual tokens kept) — e.g. K=2 cannot reach avg-32 (the K=2 floor
-    is 36 tokens, and even avg-36 would need R=0).
-    """
-    if not (0 < k < NUM_LLM_LAYERS):
-        raise ValueError(f"k must be in (0, {NUM_LLM_LAYERS}), got {k}")
-    floor = k * NUM_PATCHES / NUM_LLM_LAYERS
-    r = round((avg_budget * NUM_LLM_LAYERS - k * NUM_PATCHES) / (NUM_LLM_LAYERS - k))
-    if r < 1:
-        raise ValueError(
-            f"avg-{avg_budget} is at or below the FastV K={k} floor "
-            f"({floor:.0f} tokens); it would need R<1 (no visual tokens kept)")
-    return k, r
