@@ -133,6 +133,7 @@ def aggregate(results_dir: Path, output_csv: Path) -> List[Dict]:
             timing = json.loads(tj.read_text(encoding="utf-8")) if tj.exists() else {}
             meta = timing.get("pruning_meta", {"method": run_dir.name})
             avg_tokens = float(meta.get("avg_tokens", 576))
+            harness = meta.get("harness", "ours")
             for task, task_res in results.items():
                 try:
                     metrics = select_metrics(task, task_res)
@@ -141,6 +142,7 @@ def aggregate(results_dir: Path, output_csv: Path) -> List[Dict]:
                 for metric, value in metrics:
                     rows.append({
                         "method": run_dir.name,   # unique + self-identifying per run
+                        "harness": harness,
                         "task": task,
                         "metric": metric,
                         "value": round(value, 4),
@@ -153,7 +155,7 @@ def aggregate(results_dir: Path, output_csv: Path) -> List[Dict]:
                         "peak_mem_mb": round(timing.get("peak_mem_mb", 0.0), 1),
                         "tflops": round(estimate_tflops(avg_tokens), 3),
                     })
-    cols = ["method", "task", "metric", "value", "avg_tokens", "keep_ratio_pct",
+    cols = ["method", "harness", "task", "metric", "value", "avg_tokens", "keep_ratio_pct",
             "encoder_ms", "prefill_ms", "decode_ms", "total_ms", "peak_mem_mb", "tflops"]
     Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
     with Path(output_csv).open("w", newline="", encoding="utf-8") as f:
