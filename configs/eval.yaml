@@ -37,3 +37,13 @@ runs:
       model_args: { dominant_k: 63, diversity_m: 42, pruned_layer: 12, llm_keep_r2: 35 } }
   - { name: proposed_div50_avg64, model: llava_proposed,
       model_args: { dominant_k: 52, diversity_m: 53, pruned_layer: 12, llm_keep_r2: 35 } }
+  # --- Published baselines, matched avg-token budgets (head-to-head). ---
+  - { name: divprune_avg32,  model: llava_divprune,  model_args: { avg_tokens: 32 } }
+  - { name: divprune_avg64,  model: llava_divprune,  model_args: { avg_tokens: 64 } }
+  - { name: divprune_avg128, model: llava_divprune,  model_args: { avg_tokens: 128 } }
+  - { name: visionzip_avg32,  model: llava_visionzip, model_args: { avg_tokens: 32 } }
+  - { name: visionzip_avg64,  model: llava_visionzip, model_args: { avg_tokens: 64 } }
+  - { name: visionzip_avg128, model: llava_visionzip, model_args: { avg_tokens: 128 } }
+  - { name: fastv_avg64,  model: llava_fastv, model_args: { avg_tokens: 64 } }
+  - { name: fastv_avg128, model: llava_fastv, model_args: { avg_tokens: 128 } }
+  # fastv_avg32 omitted: K=2 floor is 36 tokens (see spec; footnote in thesis table).
