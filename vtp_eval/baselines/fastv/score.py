@@ -11,7 +11,7 @@ import torch
 
 def last_token_to_vision_scores(attn_layer: torch.Tensor,
                                 vision_slice: tuple[int, int],
-                                instr_slice: tuple[int, int]) -> torch.Tensor:
+                                instr_slice: tuple[int, int]) -> torch.Tensor:  # instr_slice ignored (FastV is text-agnostic)
     """attn_layer: [B, H, S, S]. Returns [B, Nv] last-row attn over vision cols."""
     vs, ve = vision_slice
     return attn_layer[:, :, -1, vs:ve].mean(dim=1)   # [B, Nv]
