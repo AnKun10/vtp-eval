@@ -26,13 +26,16 @@ def visionzip_knobs(avg_budget: int) -> tuple[int, int]:
 def fastv_knobs(avg_budget: int, k: int = 2) -> tuple[int, int]:
     """(K, R): R = number of image tokens kept after layer K.
 
-    Raises ValueError if avg_budget is below the K-layer floor (K*576/L), where
-    even R=0 cannot reach it — e.g. K=2 cannot reach avg-32 (floor = 36).
+    Raises ValueError if K is out of range, or if the budget would require
+    R < 1 (no visual tokens kept) — e.g. K=2 cannot reach avg-32 (the K=2 floor
+    is 36 tokens, and even avg-36 would need R=0).
     """
+    if not (0 < k < NUM_LLM_LAYERS):
+        raise ValueError(f"k must be in (0, {NUM_LLM_LAYERS}), got {k}")
     floor = k * NUM_PATCHES / NUM_LLM_LAYERS
-    if avg_budget <= floor:
-        raise ValueError(
-            f"avg-{avg_budget} is below the FastV K={k} floor ({floor:.0f} tokens); "
-            "even R=0 cannot reach it")
     r = round((avg_budget * NUM_LLM_LAYERS - k * NUM_PATCHES) / (NUM_LLM_LAYERS - k))
+    if r < 1:
+        raise ValueError(
+            f"avg-{avg_budget} is at or below the FastV K={k} floor "
+            f"({floor:.0f} tokens); it would need R<1 (no visual tokens kept)")
     return k, r
