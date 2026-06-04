@@ -84,6 +84,7 @@ def test_aggregate_one_run(tmp_path):
     r = rows[0]
     assert r["method"] == "proposed_x" and r["task"] == "pope"
     assert r["metric"] == "pope_f1_score" and float(r["value"]) == 0.88
+    assert r["retain_tokens"] == ""          # proposed method has no retain budget
     assert float(r["keep_ratio_pct"]) == round(64 / 576 * 100, 2)
     assert float(r["prefill_ms"]) == 20.0
     assert float(r["total_ms"]) == 55.0

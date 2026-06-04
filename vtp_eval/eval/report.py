@@ -134,6 +134,7 @@ def aggregate(results_dir: Path, output_csv: Path) -> List[Dict]:
             meta = timing.get("pruning_meta", {"method": run_dir.name})
             avg_tokens = float(meta.get("avg_tokens", 576))
             harness = meta.get("harness", "ours")
+            retain_tokens = meta.get("retain_tokens", "")
             for task, task_res in results.items():
                 try:
                     metrics = select_metrics(task, task_res)
@@ -146,6 +147,7 @@ def aggregate(results_dir: Path, output_csv: Path) -> List[Dict]:
                         "task": task,
                         "metric": metric,
                         "value": round(value, 4),
+                        "retain_tokens": retain_tokens,
                         "avg_tokens": round(avg_tokens, 1),
                         "keep_ratio_pct": round(avg_tokens / 576 * 100, 2),
                         "encoder_ms": round(timing.get("encoder_ms", 0.0), 3),
@@ -155,7 +157,8 @@ def aggregate(results_dir: Path, output_csv: Path) -> List[Dict]:
                         "peak_mem_mb": round(timing.get("peak_mem_mb", 0.0), 1),
                         "tflops": round(estimate_tflops(avg_tokens), 3),
                     })
-    cols = ["method", "harness", "task", "metric", "value", "avg_tokens", "keep_ratio_pct",
+    cols = ["method", "harness", "task", "metric", "value", "retain_tokens",
+            "avg_tokens", "keep_ratio_pct",
             "encoder_ms", "prefill_ms", "decode_ms", "total_ms", "peak_mem_mb", "tflops"]
     Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
     with Path(output_csv).open("w", newline="", encoding="utf-8") as f:
