@@ -11,11 +11,6 @@ NUM_LLM_LAYERS = 32
 VISIONZIP_CONTEXTUAL_FRACTION = 1 / 6.4   # dominant:contextual ~= 5.4:1 (paper)
 
 
-def divprune_ratio(avg_budget: int) -> float:
-    """DivPrune SUBSET_RATIO = kept fraction of the 576 visual tokens."""
-    return float(avg_budget) / NUM_PATCHES
-
-
 def visionzip_knobs(avg_budget: int) -> tuple[int, int]:
     """(dominant, contextual) with dominant + contextual == avg_budget."""
     contextual = max(1, round(avg_budget * VISIONZIP_CONTEXTUAL_FRACTION))

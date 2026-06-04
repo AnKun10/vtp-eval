@@ -36,13 +36,14 @@ from vtp_eval.baselines.budgets import visionzip_knobs
 @register_model("llava_visionzip")
 class LlavaVisionZip(LlavaPruningBase):
     def __init__(self, pretrained: str = "liuhaotian/llava-v1.5-7b",
-                 avg_tokens: int = 64, **kw):
+                 retain_tokens: int = 64, **kw):
         super().__init__(pretrained=pretrained, **kw)
         from visionzip import visionzip          # official; deferred import
-        avg = int(avg_tokens)
-        dominant, contextual = visionzip_knobs(avg)
-        # realized = dominant + contextual == avg (clip_encoder.py lines 54, 57, 83:
+        n = int(retain_tokens)
+        dominant, contextual = visionzip_knobs(n)
+        # realized = dominant + contextual == n (clip_encoder.py lines 54, 57, 83:
         # CLS prepend means dominant_tokens count = dominant, not dominant-1).
         self._model = visionzip(self._model, dominant=dominant, contextual=contextual)
-        self.pruning_meta = {"method": "visionzip", "avg_tokens": avg,
-                             "dominant": dominant, "contextual": contextual}
+        self.pruning_meta = {"method": "visionzip", "retain_tokens": n, "avg_tokens": n,
+                             "dominant": dominant, "contextual": contextual,
+                             "harness": "ours"}
