@@ -7,9 +7,11 @@ set -euo pipefail
 PARENT="${PARENT:-$(cd "$(dirname "$0")/../.." && pwd)}"   # .../DATN
 VZ="$PARENT/VisionZip"
 if [ -d "$VZ" ]; then
-    pip install -e "$VZ" --no-deps || \
-        echo "[install/baselines] editable VisionZip failed; adapter falls back to sys.path"
-    echo "[install/baselines] VisionZip wired ($VZ)"
+    SP=$(python -c "import site; print(site.getsitepackages()[0])")
+    echo "$VZ" > "$SP/visionzip_repo.pth"
+    python -c "import visionzip; print('[install/baselines] visionzip importable from', visionzip.__file__)" \
+        || echo "[install/baselines] WARNING: visionzip still not importable"
+    echo "[install/baselines] VisionZip wired via .pth ($VZ -> $SP)"
 else
     echo "[install/baselines] VisionZip repo not found at $VZ — clone it there."
 fi
