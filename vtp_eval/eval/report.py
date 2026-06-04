@@ -102,11 +102,11 @@ def select_metrics(task: str, task_res: Dict) -> List[Tuple[str, float]]:
                 pass
         rows: List[Tuple[str, float]] = []
         if "perception" in sub:
-            rows.append(("mme_perception", sub["perception"]))
+            rows.append(("mme_perception", sub["perception"]))   # /2000
+        if "cognition" in sub:
+            rows.append(("mme_cognition", sub["cognition"]))      # /800
         if {"perception", "cognition"} <= sub.keys():
-            rows.append(("mme_total", sub["perception"] + sub["cognition"]))
-        elif "cognition" in sub:                      # partial run: cognition only
-            rows.append(("mme_cognition", sub["cognition"]))
+            rows.append(("mme_total", sub["perception"] + sub["cognition"]))  # /2800
         if not rows:
             raise KeyError(f"no MME sub-scores in {sorted(task_res)}")
         return rows

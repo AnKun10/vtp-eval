@@ -52,10 +52,10 @@ def test_select_metrics_fallback_for_unmapped_task():
     assert report.select_metrics("brand_new_task", res) == [("foo_f1_score", 0.70)]
 
 
-def test_select_metrics_mme_emits_perception_and_total():
+def test_select_metrics_mme_emits_perception_cognition_total():
     res = {"mme_perception_score,none": 1500.0, "mme_cognition_score,none": 350.0}
     assert report.select_metrics("mme", res) == [
-        ("mme_perception", 1500.0), ("mme_total", 1850.0)]
+        ("mme_perception", 1500.0), ("mme_cognition", 350.0), ("mme_total", 1850.0)]
 
 
 def test_select_metrics_mme_partial_run_keeps_lone_subscore():
