@@ -98,12 +98,16 @@ needed — after the on-start finishes the method is ready to run.
 > On-start runs **once at first boot**. If you change it on a running instance
 > it will not re-run — Destroy and rent a fresh instance.
 
+> This block is also committed at `scripts/vast/onstart_proposed.sh` — paste its
+> contents (kept identical to the block below). It builds ONE venv that runs the
+> demo AND prune_viz on the shared transformers-4.37.2 stack.
+
 ```bash
 #!/bin/bash
 set -uo pipefail   # NOT -e: a single non-fatal step shouldn't abort the boot
 mkdir -p /workspace
 exec > >(tee -a /workspace/onstart.log) 2>&1
-echo "=== onstart (proposed-method) $(date -Iseconds) ==="
+echo "=== onstart (proposed-method demo) $(date -Iseconds) ==="
 
 export HF_HOME=/workspace/.cache/huggingface
 mkdir -p "$HF_HOME"
@@ -122,11 +126,16 @@ if /venv/main/bin/python -c "import torch,sys; sys.exit(0 if (torch.__version__.
 else
     python3 -m venv /workspace/venv; VENV=/workspace/venv; echo "[onstart] built fresh venv: $VENV"
 fi
+echo "$VENV" > /workspace/.venv          # scripts/run_app.sh reads this
 source "$VENV/bin/activate"
 python -m pip install -q -U pip wheel setuptools
 
-WORKSPACE=/workspace bash install/proposed.sh   # skips torch if already compatible
-pip install -q pytest "numpy<2"
+# Core method stack (llava + transformers 4.37.2). install/proposed.sh's lmms
+# block also installs gradio + datasets + matplotlib under a constraints file
+# that keeps huggingface_hub/datasets compatible with transformers 4.37.2 — the
+# demo (UI + benchmark streaming + figures) needs all of them, so keep it on.
+WORKSPACE=/workspace bash install/proposed.sh
+pip install -q pytest "numpy<2" "pandas>=2.0" "matplotlib>=3.7"
 
 # Auto-activate the chosen env + cd on interactive SSH login.
 grep -q "source $VENV/bin/activate" /root/.bashrc 2>/dev/null || {
@@ -137,8 +146,11 @@ grep -q "source $VENV/bin/activate" /root/.bashrc 2>/dev/null || {
 
 nvidia-smi -L
 python -c "import torch; assert torch.cuda.is_available(); print('GPU OK:', torch.cuda.get_device_name(0))"
-python -c "import transformers; print('transformers', transformers.__version__)"  # expect 4.37.2
+python -c "import transformers; print('transformers', transformers.__version__)"   # expect 4.37.2
+python -c "import gradio, datasets, pandas, matplotlib; print('UI/data deps OK; gradio', gradio.__version__)"
 python -c "import llava; from vtp_eval.proposed_method import proposed_prune; print('proposed_method import OK')"
+python -c "import vtp_eval.demo.tva; from vtp_eval.demo.engine import load_engine; print('unified demo import OK')"
+echo "[onstart] ready. Launch an app:  bash scripts/run_app.sh demo   (or prune_viz)"
 echo "=== onstart finished: $(date -Iseconds) ==="
 ```
 
@@ -170,7 +182,7 @@ tail -n 30 /workspace/onstart.log   # should end with "onstart finished" + GPU O
 ```
 If it halted mid-stream, re-run (idempotent):
 ```bash
-bash /workspace/vtp-eval/scripts/vast/onstart.sh   # or paste the §2 block into a file and run it
+bash /workspace/vtp-eval/scripts/vast/onstart_proposed.sh   # the committed copy of the §2 block
 ```
 
 ---
