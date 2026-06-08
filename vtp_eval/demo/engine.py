@@ -4,6 +4,7 @@ wrapped with the retain-token cache + index recorders. One turn = one generate()
 """
 from __future__ import annotations
 
+import contextlib
 import time
 from dataclasses import dataclass
 
@@ -33,12 +34,16 @@ class TurnResult:
 
 class Engine:
     def __init__(self, tok, model, image_processor, cfg: ProposedConfig,
-                 cache: RetainTokenCache):
+                 cache: RetainTokenCache, originals: dict):
         self.tok = tok
         self.model = model
         self.image_processor = image_processor
         self.cfg = cfg
         self.cache = cache
+        # Pristine callables captured before proposed_prune patched them, used to
+        # run a true vanilla (un-pruned) generation. Keys: vision, llama, rotary,
+        # prepare. See load_engine + _vanilla_mode.
+        self.originals = originals
 
     # --- prompt building -------------------------------------------------
     def _build_prompt(self, question: str, history: list) -> str:
@@ -119,6 +124,67 @@ class Engine:
                             max_new_tokens=max_new_tokens)
         return res.latency_s
 
+    @contextlib.contextmanager
+    def _vanilla_mode(self):
+        """Temporarily restore the un-patched model (vision + LLM + rotary +
+        prepare_inputs) and disable the cache, so a generation inside this block
+        carries ZERO proposed-method overhead. The finally-block always restores
+        the patched callables, so a failure never leaves the model half-vanilla.
+        """
+        from llava.model.multimodal_encoder.clip_encoder import CLIPVisionTower
+        from transformers.models.llama.modeling_llama import (LlamaModel,
+                                                              LlamaRotaryEmbedding)
+        patched = {
+            "vision": CLIPVisionTower.forward,
+            "llama": LlamaModel.forward,
+            "rotary": LlamaRotaryEmbedding.forward,
+            "prepare": self.model.prepare_inputs_labels_for_multimodal,
+        }
+        prev_enabled = self.cache.enabled
+        CLIPVisionTower.forward = self.originals["vision"]
+        LlamaModel.forward = self.originals["llama"]
+        LlamaRotaryEmbedding.forward = self.originals["rotary"]
+        self.model.prepare_inputs_labels_for_multimodal = self.originals["prepare"]
+        self.cache.enabled = False
+        try:
+            yield
+        finally:
+            CLIPVisionTower.forward = patched["vision"]
+            LlamaModel.forward = patched["llama"]
+            LlamaRotaryEmbedding.forward = patched["rotary"]
+            self.model.prepare_inputs_labels_for_multimodal = patched["prepare"]
+            self.cache.enabled = prev_enabled
+
+    @torch.inference_mode()
+    def vanilla_generate(self, image: Image.Image, question: str, history: list,
+                         max_new_tokens: int = 128):
+        """Generate with the un-patched model (all 576 visual tokens, no cache).
+        Returns (answer, latency_s). Preprocessing/prompt-building happen OUTSIDE
+        the timed region; only the cuda-synced generate() is timed."""
+        from llava.constants import IMAGE_TOKEN_INDEX
+        from llava.mm_utils import tokenizer_image_token
+
+        image_tensor = self._preprocess(image)
+        prompt = self._build_prompt(question, history)
+        input_ids = tokenizer_image_token(
+            prompt, self.tok, IMAGE_TOKEN_INDEX,
+            return_tensors="pt").unsqueeze(0).to(self.model.device)
+        images = image_tensor.unsqueeze(0).half().to(self.model.device)
+
+        with self._vanilla_mode():
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            out_ids = self.model.generate(
+                input_ids, images=images, image_sizes=[image.size],
+                do_sample=False, max_new_tokens=max_new_tokens, use_cache=True)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            latency = time.perf_counter() - t0
+
+        answer = self.tok.decode(out_ids[0], skip_special_tokens=True).strip()
+        return answer, latency
+
 
 def load_engine(model_path: str = "liuhaotian/llava-v1.5-7b",
                 stage2_enabled: bool = True, **cfg_overrides) -> Engine:
@@ -131,6 +197,18 @@ def load_engine(model_path: str = "liuhaotian/llava-v1.5-7b",
         model_path, None, get_model_name_from_path(model_path),
         attn_implementation="eager", device_map="cuda")
 
+    # Capture the pristine callables BEFORE proposed_prune patches them, so a
+    # true vanilla generation can be reconstructed later (see Engine._vanilla_mode).
+    from llava.model.multimodal_encoder.clip_encoder import CLIPVisionTower
+    from transformers.models.llama.modeling_llama import (LlamaModel,
+                                                          LlamaRotaryEmbedding)
+    originals = {
+        "vision": CLIPVisionTower.forward,
+        "llama": LlamaModel.forward,
+        "rotary": LlamaRotaryEmbedding.forward,
+        "prepare": model.prepare_inputs_labels_for_multimodal,
+    }
+
     params = {**DEMO_CONFIG, **cfg_overrides, "stage2_enabled": stage2_enabled}
     cfg = ProposedConfig(**params)
     cfg.validate(num_llm_layers=model.config.num_hidden_layers)
@@ -139,4 +217,18 @@ def load_engine(model_path: str = "liuhaotian/llava-v1.5-7b",
     record.install_recorders()
     cache = RetainTokenCache(maxsize=4)
     install_cache(model, cache)
-    return Engine(tok, model, image_processor, cfg, cache)
+    engine = Engine(tok, model, image_processor, cfg, cache, originals)
+    _warmup(engine)
+    return engine
+
+
+def _warmup(engine: Engine) -> None:
+    """Run one short generation in each mode so first user turn isn't skewed by
+    one-time CUDA kernel costs; clear the dummy image from the cache afterward."""
+    img = Image.new("RGB", (336, 336), (127, 127, 127))
+    try:
+        engine.run_turn(img, "Describe the image.", history=[], max_new_tokens=4)
+        engine.vanilla_generate(img, "Describe the image.", history=[],
+                                max_new_tokens=4)
+    finally:
+        engine.cache.clear()
