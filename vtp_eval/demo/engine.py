@@ -70,12 +70,12 @@ class Engine:
         record.reset()
 
         image_tensor = self._preprocess(image)
-        key = image_hash(image_tensor)
         prompt = self._build_prompt(question, history)
         input_ids = tokenizer_image_token(
             prompt, self.tok, IMAGE_TOKEN_INDEX,
             return_tensors="pt").unsqueeze(0).to(self.model.device)
         images = image_tensor.unsqueeze(0).half().to(self.model.device)
+        key = image_hash(images)   # hash the exact tensor encode_images receives
 
         if torch.cuda.is_available():
             torch.cuda.synchronize()
