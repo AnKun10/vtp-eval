@@ -18,20 +18,19 @@ Config is fixed: R1=384 (div 50%, dominant_k=192 + diversity_m=192), R2=128 at
 LLM layer 12. Fallback if the Stage-2 decode path misbehaves: add `--no-stage2`
 (R1-only; the cache still works).
 
-## Manual smoke checklist
-- [ ] Pick one or more benchmarks (pope/textvqa/mme/scienceqa/vizwiz/ocrbench),
-      set images/benchmark, click **Load** → a thumbnail gallery appears.
-- [ ] Click a thumbnail → "Selected image" fills, both conversations reset, and
-      the benchmark questions for that image are listed below the chat.
-- [ ] Click a listed question (or type your own) → **Send**. The assistant bubble
-      shows BOTH a **Proposed** answer (latency · 128 tok · cache miss) and a
-      **Vanilla** answer (latency · 576 tok), the proposed no-cache latency, and
-      the speedup. Vanilla should be slower than proposed.
-- [ ] Ask a second question about the same image → the Proposed line shows
-      `CACHE HIT` and a lower latency; vanilla has no cache and stays slow.
-- [ ] R1 overlay (384) is identical across turns; R2 overlay (128) changes with
-      the question.
-- [ ] Click a different thumbnail → both conversations reset; first turn is a miss.
+## Manual smoke checklist (unified 3-tab app)
+- [ ] Pick benchmark(s) + images/benchmark → **Load** → thumbnail gallery appears.
+- [ ] Click a thumbnail → "Selected image" fills; its benchmark questions list
+      below. Click a question → it fills the Inference input and the TVA target
+      words; all three tabs now share it.
+- [ ] **Pruning viz** tab: pick budget (32/64/128) + diversity %, **Run** →
+      exp2 (Attention | Diversity) and exp3 (After R1 | After R2) overlays appear.
+- [ ] **Text-visual attention** tab: tick a target word (e.g. the object asked
+      about), **Run** → a 3-layer (shallow/middle/deep) attention heatmap +
+      a concentration bar chart appear; deeper layers are more focused.
+- [ ] **Inference** tab: **Send** → one bubble with Proposed (128 tok) vs Vanilla
+      (576 tok) answers + latencies; a same-image follow-up shows `CACHE HIT`.
+- [ ] Click a different thumbnail → all tabs reset (chat, figures, words cleared).
 
 ## Automated slow test
 `pytest -m slow tests/test_demo_engine_smoke.py -v`  (Vast.ai only)
