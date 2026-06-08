@@ -185,6 +185,38 @@ class Engine:
         answer = self.tok.decode(out_ids[0], skip_special_tokens=True).strip()
         return answer, latency
 
+    @torch.inference_mode()
+    def tva_attention(self, image, query: str, words, layers=(2, 12, 30)):
+        """Per-word text->vision attention on the shared model, run on the
+        un-patched original model. Returns {pwl, word_positions, grid, sinks,
+        lyrs}. ``words`` must appear verbatim in ``query``."""
+        from vtp_eval.demo import tva
+        with self._vanilla_mode():
+            return tva.extract_attention(self.model, self.tok, self.image_processor,
+                                         image, query, list(words), list(layers))
+
+    @torch.inference_mode()
+    def prune_viz_figures(self, image, question: str, R1: int, R2: int,
+                          dominant_k: int, diversity_m: int, pruned_layer: int = 12):
+        """R1/R2 token-pruning selections for the prune_viz figures, computed on
+        the un-patched original model (so LlamaModel.forward does not auto-prune).
+        Returns keep-index tensors for exp2 (attention/diversity R1 sets) and
+        exp3 (combined R1 -> R2)."""
+        from vtp_eval.insight.prune_viz import extract
+        from vtp_eval.proposed_method.config import ProposedConfig
+
+        image_tensor = self._preprocess(image).unsqueeze(0).half().to(self.model.device)
+        with self._vanilla_mode():
+            attn_p, hid_p = extract.penultimate_vision(self.model, image_tensor)
+            sels = extract.r1_selections(attn_p, hid_p, R1, dominant_k, diversity_m)
+            cfg = ProposedConfig(dominant_k, diversity_m, pruned_layer, R2)
+            r2 = extract.r2_selection(self.tok, self.model, image_tensor, question,
+                                      cfg, sels["combined"])
+        return {"attention": sels["attention"], "diversity": sels["diversity"],
+                "combined": sels["combined"], "r2": r2,
+                "R1": R1, "R2": R2, "dominant_k": dominant_k,
+                "diversity_m": diversity_m}
+
 
 def load_engine(model_path: str = "liuhaotian/llava-v1.5-7b",
                 stage2_enabled: bool = True, **cfg_overrides) -> Engine:
