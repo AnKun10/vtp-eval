@@ -163,7 +163,10 @@ def main():
     engine = load_engine(model_path=args.model, stage2_enabled=not args.no_stage2)
     ui = build_ui(engine)
     ui.queue()
-    ui.launch(server_name="0.0.0.0", server_port=args.port, share=args.share)
+    # Gallery thumbnails are served from SAMPLE_DIR (outside CWD/temp); Gradio
+    # blocks such paths unless whitelisted via allowed_paths.
+    ui.launch(server_name="0.0.0.0", server_port=args.port, share=args.share,
+              allowed_paths=[str(SAMPLE_DIR)])
 
 
 if __name__ == "__main__":
