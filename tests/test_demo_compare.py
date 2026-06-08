@@ -2,39 +2,27 @@
 from vtp_eval.demo.compare import format_comparison
 
 
-def test_format_comparison_contains_answers_latencies_and_speedup():
+def test_format_comparison_hit_shows_deterministic_vision_saving():
     md = format_comparison(
         proposed_answer="red and blue", proposed_latency=2.0, cache_hit=True,
-        r2_tokens=128, no_cache_latency=3.1,
+        r2_tokens=128, vision_encode_ms=37.0,
         vanilla_answer="red and blue too", vanilla_latency=4.0, vanilla_tokens=576)
     assert "red and blue" in md and "red and blue too" in md
-    assert "2.00s" in md and "3.10s" in md and "4.00s" in md   # all three latencies
+    assert "2.00s" in md and "4.00s" in md
     assert "128 tok" in md and "576 tok" in md
     assert "CACHE HIT" in md
-    assert "2.0" in md                                          # speedup 4.0/2.0 = 2.0x
+    assert "37ms" in md and "saved" in md            # deterministic vision-encode saving
+    assert "2.0×" in md                              # speedup 4.0/2.0
 
 
-def test_format_comparison_cache_miss_label_and_speedup_value():
-    md = format_comparison("a", 1.0, False, 128, 1.5, "b", 3.0, 576)
+def test_format_comparison_miss_shows_building_cache_not_saving():
+    md = format_comparison("a", 1.0, False, 128, 37.0, "b", 3.0, 576)
     assert "cache miss" in md
-    assert "3.0×" in md                                         # 3.0/1.0
+    assert "building" in md.lower()                  # no saving claim on a miss
+    assert "saved" not in md
+    assert "3.0×" in md                              # 3.0/1.0
 
 
 def test_format_comparison_zero_latency_no_crash():
-    md = format_comparison("a", 0.0, True, 128, 0.0, "b", 1.0, 576)
-    assert "0.0×" in md                                         # guarded division
-
-
-def test_format_comparison_none_no_cache_omits_line():
-    # On a cache MISS the caller passes no_cache_latency=None; the no-cache line
-    # must be omitted (no identical-work number to compare against).
-    md = format_comparison("a", 1.0, False, 128, None, "b", 2.0, 576)
-    assert "no-cache" not in md
-    assert "**Proposed**" in md and "**Vanilla**" in md         # other lines still there
-    assert "2.0×" in md
-
-
-def test_format_comparison_hit_shows_cache_saved():
-    md = format_comparison("a", 1.0, True, 128, 3.5, "b", 4.0, 576)
-    assert "no-cache: 3.50s" in md
-    assert "cache saved 2.50s" in md                            # 3.5 - 1.0
+    md = format_comparison("a", 0.0, True, 128, 37.0, "b", 1.0, 576)
+    assert "0.0×" in md                              # guarded division

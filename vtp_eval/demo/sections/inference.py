@@ -30,8 +30,6 @@ def build_inference_tab(engine, selected_image, current_question):
             return chat_v, p_hist, v_hist, None, None
         try:
             res = engine.run_turn(image, question, p_hist, use_cache=use_cache_v)
-            no_cache = (engine.compare_latency(image, question, p_hist)
-                        if res.cache_hit else None)
             v_answer, v_latency = engine.vanilla_generate(image, question, v_hist)
         except Exception as e:
             chat_v = chat_v + [{"role": "user", "content": question},
@@ -39,8 +37,8 @@ def build_inference_tab(engine, selected_image, current_question):
                                 "content": f"**Error:** {type(e).__name__}: {e}"}]
             return chat_v, p_hist, v_hist, None, None
         bubble = format_comparison(res.answer, res.latency_s, res.cache_hit,
-                                   res.tokens[2], no_cache, v_answer, v_latency,
-                                   res.tokens[0])
+                                   res.tokens[2], engine.vision_encode_ms,
+                                   v_answer, v_latency, res.tokens[0])
         chat_v = chat_v + [{"role": "user", "content": question},
                            {"role": "assistant", "content": bubble}]
         p_hist = p_hist + [(question, res.answer)]

@@ -44,6 +44,9 @@ class Engine:
         # run a true vanilla (un-pruned) generation. Keys: vision, llama, rotary,
         # prepare. See load_engine + _vanilla_mode.
         self.originals = originals
+        # Deterministic vision-encode + R1 time a cache HIT skips (ms); measured
+        # once in load_engine. The cache's real per-turn wall-clock saving.
+        self.vision_encode_ms = 0.0
 
     # --- prompt building -------------------------------------------------
     def _build_prompt(self, question: str, history: list) -> str:
@@ -163,6 +166,28 @@ class Engine:
             vars(self.model.get_model().get_vision_tower()).pop("forward", None)
 
     @torch.inference_mode()
+    def _measure_vision_encode_ms(self, trials: int = 5) -> float:
+        """Time the vision tower + R1 selection + projector that a cache HIT
+        skips (~constant for 336x336 images). Reports the cache's deterministic
+        per-turn saving, instead of a noisy turn-vs-turn generate diff."""
+        img = Image.new("RGB", (336, 336), (127, 127, 127))
+        it = self._preprocess(img).unsqueeze(0).half().to(self.model.device)
+        prev = self.cache.enabled
+        self.cache.enabled = False                 # force the real encode (no cache)
+        try:
+            self.model.encode_images(it)           # warm
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            for _ in range(trials):
+                self.model.encode_images(it)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            return (time.perf_counter() - t0) / trials * 1000.0
+        finally:
+            self.cache.enabled = prev
+
+    @torch.inference_mode()
     def vanilla_generate(self, image: Image.Image, question: str, history: list,
                          max_new_tokens: int = 128):
         """Generate with the un-patched model (all 576 visual tokens, no cache).
@@ -258,6 +283,7 @@ def load_engine(model_path: str = "liuhaotian/llava-v1.5-7b",
     install_cache(model, cache)
     engine = Engine(tok, model, image_processor, cfg, cache, originals)
     _warmup(engine)
+    engine.vision_encode_ms = engine._measure_vision_encode_ms()
     return engine
 
 
