@@ -23,7 +23,8 @@ def build_ui(engine):
         except Exception as e:  # surface errors instead of a raw stack trace
             return chat, history, f"**Error:** {type(e).__name__}: {e}", None, None
         history = history + [(question, res.answer)]
-        chat = chat + [(question, res.answer)]
+        chat = chat + [{"role": "user", "content": question},
+                       {"role": "assistant", "content": res.answer}]
         s576, r1, r2 = res.tokens
         metrics = (
             f"**Latency:** {res.latency_s:.2f}s  "
@@ -52,7 +53,9 @@ def build_ui(engine):
                     ov_r1 = gr.Image(label="Kept after R1 (384)")
                     ov_r2 = gr.Image(label="Kept after R2 (128)")
             with gr.Column(scale=1):
-                chat = gr.Chatbot(label="Conversation", height=380, type="tuples")
+                # Feed messages-format dicts ({"role","content"}); newer Gradio
+                # (6.x) dropped the tuple format and the `type` kwarg entirely.
+                chat = gr.Chatbot(label="Conversation", height=380)
                 question = gr.Textbox(label="Question", placeholder="Ask about the image…")
                 send = gr.Button("Send", variant="primary")
                 metrics = gr.Markdown("")
