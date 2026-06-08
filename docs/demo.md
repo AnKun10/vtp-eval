@@ -20,18 +20,18 @@ LLM layer 12. Fallback if the Stage-2 decode path misbehaves: add `--no-stage2`
 
 ## Manual smoke checklist
 - [ ] Pick one or more benchmarks (pope/textvqa/mme/scienceqa/vizwiz/ocrbench),
-      set images/benchmark, click **Load** → a thumbnail gallery appears; status
-      shows how many images loaded (and any failed benchmarks).
-- [ ] Click a thumbnail → "Selected image" fills, the conversation resets, and
+      set images/benchmark, click **Load** → a thumbnail gallery appears.
+- [ ] Click a thumbnail → "Selected image" fills, both conversations reset, and
       the benchmark questions for that image are listed below the chat.
-- [ ] Click one of the listed questions → it drops into the input box; or type
-      your own. Press **Send** → answer appears; metrics show `cache miss`,
-      tokens `576 → 384 → 128`, and a latency value.
-- [ ] Ask a second question about the same image → metrics show `CACHE HIT` with
-      a latency below the `No-cache (same turn)` figure.
-- [ ] R1 overlay (384) is identical across turns on one image; R2 overlay (128)
-      changes with the question (query-aware).
-- [ ] Click a different thumbnail → conversation resets; first question is a miss.
+- [ ] Click a listed question (or type your own) → **Send**. The assistant bubble
+      shows BOTH a **Proposed** answer (latency · 128 tok · cache miss) and a
+      **Vanilla** answer (latency · 576 tok), the proposed no-cache latency, and
+      the speedup. Vanilla should be slower than proposed.
+- [ ] Ask a second question about the same image → the Proposed line shows
+      `CACHE HIT` and a lower latency; vanilla has no cache and stays slow.
+- [ ] R1 overlay (384) is identical across turns; R2 overlay (128) changes with
+      the question.
+- [ ] Click a different thumbnail → both conversations reset; first turn is a miss.
 
 ## Automated slow test
 `pytest -m slow tests/test_demo_engine_smoke.py -v`  (Vast.ai only)
