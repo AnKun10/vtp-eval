@@ -1,7 +1,7 @@
 # vtp_eval/demo/app.py
-"""Gradio Blocks demo: multi-turn QA on one image with the proposed pruning
-method + retain-token cache. The image is picked from VQA benchmarks (grouped by
-image) rather than uploaded. Launch on Vast.ai:  python -m vtp_eval.demo.app
+"""Gradio Blocks demo: multi-turn QA on one benchmark image with the proposed
+pruning method + retain-token cache, shown side-by-side with vanilla (un-pruned)
+LLaVA each turn. Launch on Vast.ai:  python -m vtp_eval.demo.app
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import yaml
 from PIL import Image
 
 from vtp_eval.demo.benchmarks import fetch_grouped
+from vtp_eval.demo.compare import format_comparison
 from vtp_eval.demo.engine import load_engine
 from vtp_eval.insight.prune_viz.datasets import resolve_specs
 
@@ -56,20 +57,20 @@ def _load_benchmarks(selected, n_images):
 
 
 def _on_select(flat, evt: gr.SelectData):
-    """Thumbnail clicked -> set the chat image, reset conversation, list its
+    """Thumbnail clicked -> set the chat image, reset BOTH conversations, list its
     benchmark questions. Returns 10 outputs (see wiring below)."""
     if not flat or evt.index >= len(flat):
-        return (None, [], [], gr.update(samples=[]), [],
-                "Load benchmarks first.", "", None, None, "")
+        return (None, [], [], [], gr.update(samples=[]), [],
+                "Load benchmarks first.", None, None, "")
     s = flat[evt.index]
     img = Image.open(s["image_path"]).convert("RGB")
     qs = list(s["questions"] or [])
     samples = [[q] for q in qs]
     note = (f"**{s['dataset']}** — {len(qs)} question(s) for this image; "
             "click one to use it." if qs else "(no questions for this image)")
-    # selected_image, chat, history, questions_ds, questions_state,
-    # status, metrics, ov_r1, ov_r2, question
-    return img, [], [], gr.update(samples=samples), qs, note, "", None, None, ""
+    # selected_image, chat, proposed_history, vanilla_history, questions_ds,
+    # questions_state, status, ov_r1, ov_r2, question
+    return img, [], [], [], gr.update(samples=samples), qs, note, None, None, ""
 
 
 def _on_pick_question(qs, evt: gr.SelectData):
@@ -82,31 +83,36 @@ def _on_pick_question(qs, evt: gr.SelectData):
 def build_ui(engine):
     stage2 = engine.cfg.stage2_enabled
 
-    def respond(image, question, chat, history, use_cache):
+    def respond(image, question, chat, p_hist, v_hist, use_cache):
         if image is None or not (question or "").strip():
-            return chat, history, "Pick a benchmark image and a question.", None, None
+            return chat, p_hist, v_hist, None, None
         try:
-            res = engine.run_turn(image, question, history, use_cache=use_cache)
-            compare = engine.compare_latency(image, question, history)
-        except Exception as e:  # surface errors instead of a raw stack trace
-            return chat, history, f"**Error:** {type(e).__name__}: {e}", None, None
-        history = history + [(question, res.answer)]
+            res = engine.run_turn(image, question, p_hist, use_cache=use_cache)
+            no_cache = engine.compare_latency(image, question, p_hist)
+            v_answer, v_latency = engine.vanilla_generate(image, question, v_hist)
+        except Exception as e:  # surface as a chat bubble; keep the 5-output arity
+            chat = chat + [{"role": "user", "content": question},
+                           {"role": "assistant",
+                            "content": f"**Error:** {type(e).__name__}: {e}"}]
+            return chat, p_hist, v_hist, None, None
+        bubble = format_comparison(
+            proposed_answer=res.answer, proposed_latency=res.latency_s,
+            cache_hit=res.cache_hit, r2_tokens=res.tokens[2],
+            no_cache_latency=no_cache, vanilla_answer=v_answer,
+            vanilla_latency=v_latency, vanilla_tokens=res.tokens[0])
         chat = chat + [{"role": "user", "content": question},
-                       {"role": "assistant", "content": res.answer}]
-        s576, r1, r2 = res.tokens
-        metrics = (
-            f"**Latency:** {res.latency_s:.2f}s  "
-            f"({'CACHE HIT' if res.cache_hit else 'cache miss'})\n\n"
-            f"**Tokens:** {s576} → {r1} → {r2}\n\n"
-            f"**No-cache (same turn):** {compare:.2f}s"
-        )
-        return chat, history, metrics, res.overlay_r1, res.overlay_r2
+                       {"role": "assistant", "content": bubble}]
+        p_hist = p_hist + [(question, res.answer)]
+        v_hist = v_hist + [(question, v_answer)]
+        return chat, p_hist, v_hist, res.overlay_r1, res.overlay_r2
 
-    with gr.Blocks(title="LLaVA Pruning + Retain-Token Cache") as demo:
-        gr.Markdown("# LLaVA-1.5 two-stage pruning + retain-token cache\n"
+    with gr.Blocks(title="LLaVA Pruning vs Vanilla") as demo:
+        gr.Markdown("# LLaVA-1.5 two-stage pruning vs vanilla\n"
                     f"R1=384 (div 50%) → R2={'128' if stage2 else 'off'} · "
-                    f"Stage-2: {'ON' if stage2 else 'OFF'}")
-        history = gr.State([])
+                    f"Stage-2: {'ON' if stage2 else 'OFF'} · each turn also runs "
+                    "vanilla (full 576 tokens) for comparison")
+        proposed_history = gr.State([])
+        vanilla_history = gr.State([])
         flat_state = gr.State([])
         questions_state = gr.State([])
 
@@ -130,24 +136,27 @@ def build_ui(engine):
                     ov_r1 = gr.Image(label="Kept after R1 (384)")
                     ov_r2 = gr.Image(label="Kept after R2 (128)")
             with gr.Column(scale=1):
-                chat = gr.Chatbot(label="Conversation", height=320)
+                chat = gr.Chatbot(label="Proposed vs Vanilla", height=320)
                 questions_ds = gr.Dataset(components=[gr.Textbox(visible=False)],
                                           samples=[], label="Benchmark questions "
                                           "for this image (click to use)")
                 question = gr.Textbox(label="Question",
                                       placeholder="Click a question above or type your own…")
                 send = gr.Button("Send", variant="primary")
-                metrics = gr.Markdown("")
 
         load_btn.click(_load_benchmarks, [ds_in, n_in], [gallery, status, flat_state])
         gallery.select(_on_select, [flat_state],
-                       [selected_image, chat, history, questions_ds, questions_state,
-                        status, metrics, ov_r1, ov_r2, question])
+                       [selected_image, chat, proposed_history, vanilla_history,
+                        questions_ds, questions_state, status, ov_r1, ov_r2, question])
         questions_ds.select(_on_pick_question, [questions_state], [question])
-        send.click(respond, [selected_image, question, chat, history, use_cache],
-                   [chat, history, metrics, ov_r1, ov_r2])
-        question.submit(respond, [selected_image, question, chat, history, use_cache],
-                        [chat, history, metrics, ov_r1, ov_r2])
+        send.click(respond,
+                   [selected_image, question, chat, proposed_history,
+                    vanilla_history, use_cache],
+                   [chat, proposed_history, vanilla_history, ov_r1, ov_r2])
+        question.submit(respond,
+                        [selected_image, question, chat, proposed_history,
+                         vanilla_history, use_cache],
+                        [chat, proposed_history, vanilla_history, ov_r1, ov_r2])
     return demo
 
 
