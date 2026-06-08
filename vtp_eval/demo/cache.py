@@ -18,3 +18,37 @@ def image_hash(images: torch.Tensor) -> str:
     by canonicalizing to contiguous float32 CPU bytes."""
     t = images.detach().to("cpu", torch.float32).contiguous()
     return hashlib.sha1(t.numpy().tobytes()).hexdigest()
+
+
+class RetainTokenCache:
+    """LRU cache of R1 retain tokens keyed by image hash.
+
+    Each entry: {"feats": tensor [1, R1, D], "r1_idx": tensor [R1] | None}.
+    `enabled` gates lookups (toggled off for the no-cache comparison run);
+    `last_was_hit` records the result of the most recent lookup for metrics.
+    """
+
+    def __init__(self, maxsize: int = 4):
+        self.maxsize = maxsize
+        self._store: "OrderedDict[str, dict]" = OrderedDict()
+        self.enabled = True
+        self.last_was_hit = False
+
+    def get(self, key: str):
+        if key in self._store:
+            self._store.move_to_end(key)
+            return self._store[key]
+        return None
+
+    def put(self, key: str, feats: torch.Tensor) -> None:
+        self._store[key] = {"feats": feats, "r1_idx": None}
+        self._store.move_to_end(key)
+        while len(self._store) > self.maxsize:
+            self._store.popitem(last=False)
+
+    def attach_r1(self, key: str, r1_idx: torch.Tensor) -> None:
+        if key in self._store:
+            self._store[key]["r1_idx"] = r1_idx
+
+    def clear(self) -> None:
+        self._store.clear()
