@@ -55,3 +55,56 @@ def pwl_from_attentions(attns, word_positions_merged, vstart, layers,
             pwl[w][d] = stacked.mean(0).detach().float().cpu().numpy()
     sinks = {int(pwl[w][d].argmax()) for w in pwl for d in depth_names}
     return pwl, sinks
+
+
+def extract_attention(model, tok, image_processor, image, query, words,
+                      layers, depth_names=DEPTH_NAMES):
+    """Liuhaotian-stack TVA extraction. Returns
+    {pwl, word_positions, grid, sinks, lyrs} (same contract the TVA
+    metrics/visualize helpers consume). ``words`` must appear verbatim in
+    ``query`` (they are drawn from the benchmark question)."""
+    import math
+
+    from llava.constants import IMAGE_TOKEN_INDEX
+    from llava.mm_utils import process_images, tokenizer_image_token
+
+    from vtp_eval.insight.text_visual_attention.tokens import find_word_positions
+
+    prompt = f"USER: <image>\n{query} ASSISTANT:"
+    input_ids = tokenizer_image_token(
+        prompt, tok, IMAGE_TOKEN_INDEX,
+        return_tensors="pt").unsqueeze(0).to(model.device)
+    ids = input_ids[0]
+    vpos = (ids == IMAGE_TOKEN_INDEX).nonzero(as_tuple=False).flatten().tolist()
+    if len(vpos) != 1:
+        raise ValueError(f"expected exactly one image placeholder, got {len(vpos)}")
+    vstart = vpos[0]
+    n_vis = 576
+    grid = int(math.sqrt(n_vis))                 # 24 for LLaVA-1.5
+
+    # Target-word positions in the PRE-merge ids (exclude the 1 placeholder token).
+    word_positions, missing = {}, []
+    for w in words:
+        p = find_word_positions(ids, tok, w, vstart, vstart)
+        if p is not None:
+            word_positions[w] = p
+        else:
+            missing.append(w)
+    if missing:
+        raise ValueError(f"words not found verbatim in query: {missing}")
+    wp_merged = {w: [to_merged_index(t, vstart, n_vis) for t in ps]
+                 for w, ps in word_positions.items()}
+
+    image_tensor = process_images([image.convert("RGB")], image_processor,
+                                  model.config)[0].unsqueeze(0).half().to(model.device)
+    with torch.inference_mode():
+        out = model(input_ids, images=image_tensor, image_sizes=[image.size],
+                    output_attentions=True, use_cache=False, return_dict=True)
+    pwl, sinks = pwl_from_attentions(out.attentions, wp_merged, vstart, layers,
+                                     n_vis=n_vis, depth_names=depth_names)
+    lyrs = dict(zip(depth_names, layers))
+    del out
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return {"pwl": pwl, "word_positions": word_positions, "grid": grid,
+            "sinks": sinks, "lyrs": lyrs}
