@@ -27,3 +27,31 @@ def to_merged_index(pos: int, vstart: int, n_vis: int = 576) -> int:
     if pos == vstart:
         return vstart
     return pos + (n_vis - 1)
+
+
+DEPTH_NAMES = ("shallow", "middle", "deep")
+
+
+def pwl_from_attentions(attns, word_positions_merged, vstart, layers,
+                        n_vis: int = 576, depth_names=DEPTH_NAMES):
+    """Pure post-processing of attention tensors into per-(word, depth) vectors.
+
+    ``attns``: sequence indexable by layer index -> tensor [B, H, S, S] (or
+    [H, S, S]). ``word_positions_merged``: dict[word, list[int]] token positions
+    in the MERGED frame. Returns (pwl, sinks):
+      pwl[word][depth] = float ndarray (n_vis,) head-averaged attention from the
+        word's tokens to the vision block [vstart, vstart + n_vis);
+      sinks = set of vision indices that are top-1 across all (word, depth).
+    """
+    lyrs = dict(zip(depth_names, layers))
+    pwl = {w: {} for w in word_positions_merged}
+    for d, L in lyrs.items():
+        A = attns[L]
+        A = A[0] if A.dim() == 4 else A          # [H, S, S]
+        A = A.mean(0)                            # [S, S] head-averaged
+        for w, positions in word_positions_merged.items():
+            stacked = torch.stack([A[t, vstart:vstart + n_vis] for t in positions],
+                                  dim=0)
+            pwl[w][d] = stacked.mean(0).detach().float().cpu().numpy()
+    sinks = {int(pwl[w][d].argmax()) for w in pwl for d in depth_names}
+    return pwl, sinks
