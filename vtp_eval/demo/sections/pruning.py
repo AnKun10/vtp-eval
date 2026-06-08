@@ -26,25 +26,29 @@ def build_pruning_tab(engine, selected_image, current_question):
     def run_fn(image, question, budget_v, diversity_v):
         if image is None:
             return "Pick a benchmark image first.", None, None
+        import time
+
         from vtp_eval.insight.prune_viz import render
         q = (question or "").strip() or "What is in the image?"
         OUT.mkdir(parents=True, exist_ok=True)
+        stamp = int(time.time() * 1000)          # unique names so gradio re-serves
+        exp2_p, exp3_p = OUT / f"exp2_{stamp}.png", OUT / f"exp3_{stamp}.png"
         try:
             R1, R2, dom, div = resolve_knobs(budget_v, diversity_v)
             pv = engine.prune_viz_figures(image, q, R1, R2, dom, div)
             render.plot_prune_row(
                 image, [pv["attention"].cpu().numpy(), pv["diversity"].cpu().numpy()],
-                ["Attention", "Diversity"], str(OUT / "exp2.png"),
+                ["Attention", "Diversity"], str(exp2_p),
                 suptitle=f"R1={R1} (dom {dom} / div {div})")
             render.plot_prune_row(
                 image, [pv["combined"].cpu().numpy(), pv["r2"].cpu().numpy()],
-                [f"After R1 ({R1})", f"After R2 ({R2})"], str(OUT / "exp3.png"),
+                [f"After R1 ({R1})", f"After R2 ({R2})"], str(exp3_p),
                 suptitle=f"R1={R1} -> R2={R2}")
         except Exception as e:
             return f"**Error:** {type(e).__name__}: {e}", None, None
         md = (f"**R1={R1}** (dominant {dom} + diversity {div}), **R2={R2}**, "
               f"prune@layer 12 · query: _{q[:60]}_")
-        return md, str(OUT / "exp2.png"), str(OUT / "exp3.png")
+        return md, str(exp2_p), str(exp3_p)
 
     run.click(run_fn, [selected_image, current_question, budget, diversity],
               [info, exp2, exp3])

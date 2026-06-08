@@ -30,19 +30,22 @@ def build_tva_tab(engine, selected_image, current_question):
             return "Pick a benchmark image and a question first.", None, None, None
         if not words_v:
             return "Tick at least one target word.", None, None, None
+        import time
+
         from vtp_eval.insight.text_visual_attention import metrics, visualize
         OUT.mkdir(parents=True, exist_ok=True)
+        stamp = int(time.time() * 1000)          # unique names so gradio re-serves
+        heat_p, bar_p = OUT / f"tva_heatmap_{stamp}.png", OUT / f"tva_metrics_{stamp}.png"
         try:
             tva = engine.tva_attention(image, question, list(words_v),
                                        (int(s), int(m), int(d)))
             visualize.plot_heatmap_grid(tva["pwl"], image, tva["sinks"],
-                                        tva["grid"], tva["lyrs"], question,
-                                        str(OUT / "tva_heatmap.png"))
+                                        tva["grid"], tva["lyrs"], question, str(heat_p))
             mdf = metrics.compute_metrics(tva["pwl"], tva["sinks"], tva["lyrs"])
-            visualize.plot_metrics_bar(mdf, tva["lyrs"], str(OUT / "tva_metrics.png"))
+            visualize.plot_metrics_bar(mdf, tva["lyrs"], str(bar_p))
         except Exception as e:
             return f"**Error:** {type(e).__name__}: {e}", None, None, None
-        return "Done.", str(OUT / "tva_heatmap.png"), str(OUT / "tva_metrics.png"), mdf
+        return "Done.", str(heat_p), str(bar_p), mdf
 
     run.click(run_fn, [selected_image, current_question, words, ly_s, ly_m, ly_d],
               [status, heatmap, metrics_img, df])
