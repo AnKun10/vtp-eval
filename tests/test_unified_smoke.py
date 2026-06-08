@@ -28,6 +28,9 @@ def test_one_model_serves_demo_pruneviz_and_tva():
     assert tva["grid"] == 24 and len(tva["sinks"]) >= 1
 
     # After the insight calls, the demo turn still prunes (patches restored).
+    # Reset the marker first so the assertion proves THIS turn re-pruned (not a
+    # stale value left from warmup).
+    engine.model.model._proposed_last_prune = None
     res2 = engine.run_turn(img, q, history=[])
     assert res2.answer
     assert engine.model.model._proposed_last_prune is not None

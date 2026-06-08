@@ -49,14 +49,26 @@ def main():
         OUT / "exp3.png", suptitle="exp3  R1=128 -> R2=64")
     print(f"[pruneviz] saved {OUT/'exp2.png'} and {OUT/'exp3.png'}")
 
-    # 3. TVA — longest content word from the benchmark question
-    word = max((w.strip(".,?!\"'") for w in question.split()), key=len)
-    tva = engine.tva_attention(img, question, [word], layers=(2, 12, 30))
-    visualize.plot_heatmap_grid(tva["pwl"], img, tva["sinks"], tva["grid"],
-                                tva["lyrs"], question, OUT / "tva_heatmap.png")
-    metrics.compute_metrics(tva["pwl"], tva["sinks"], tva["lyrs"]).to_csv(
-        OUT / "tva_metrics.csv", index=False)
-    print(f"[tva]     word={word!r} -> saved {OUT/'tva_heatmap.png'} + metrics")
+    # 3. TVA — try content words (longest first) until one is located verbatim
+    # in the prompt (a rare subword-tokenization mismatch otherwise raises).
+    cands = sorted({w.strip(".,?!\"'") for w in question.split() if len(w) >= 4},
+                   key=len, reverse=True) or [max(question.split(), key=len)]
+    tva = word = None
+    for w in cands:
+        try:
+            tva = engine.tva_attention(img, question, [w], layers=(2, 12, 30))
+            word = w
+            break
+        except ValueError:
+            continue
+    if tva is None:
+        print("[tva]     no question word located verbatim; skipping TVA section")
+    else:
+        visualize.plot_heatmap_grid(tva["pwl"], img, tva["sinks"], tva["grid"],
+                                    tva["lyrs"], question, OUT / "tva_heatmap.png")
+        metrics.compute_metrics(tva["pwl"], tva["sinks"], tva["lyrs"]).to_csv(
+            OUT / "tva_metrics.csv", index=False)
+        print(f"[tva]     word={word!r} -> saved {OUT/'tva_heatmap.png'} + metrics")
 
     print("[unified] OK — one resident model served demo + prune_viz + TVA")
 
