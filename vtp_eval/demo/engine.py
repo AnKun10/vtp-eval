@@ -223,12 +223,15 @@ def load_engine(model_path: str = "liuhaotian/llava-v1.5-7b",
 
 
 def _warmup(engine: Engine) -> None:
-    """Run one short generation in each mode so first user turn isn't skewed by
-    one-time CUDA kernel costs; clear the dummy image from the cache afterward."""
+    """Warm both modes with representative-length generations so the FIRST user
+    turn isn't skewed by one-time CUDA kernel/allocator costs (and GPU clock
+    ramp). Runs proposed twice (miss then hit, warming both cache paths) plus one
+    vanilla pass; clears the dummy image from the cache afterward."""
     img = Image.new("RGB", (336, 336), (127, 127, 127))
     try:
-        engine.run_turn(img, "Describe the image.", history=[], max_new_tokens=4)
+        engine.run_turn(img, "Describe the image.", history=[], max_new_tokens=32)
+        engine.run_turn(img, "Describe the image.", history=[], max_new_tokens=32)
         engine.vanilla_generate(img, "Describe the image.", history=[],
-                                max_new_tokens=4)
+                                max_new_tokens=32)
     finally:
         engine.cache.clear()

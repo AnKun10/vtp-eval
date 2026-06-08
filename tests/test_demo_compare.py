@@ -23,3 +23,18 @@ def test_format_comparison_cache_miss_label_and_speedup_value():
 def test_format_comparison_zero_latency_no_crash():
     md = format_comparison("a", 0.0, True, 128, 0.0, "b", 1.0, 576)
     assert "0.0×" in md                                         # guarded division
+
+
+def test_format_comparison_none_no_cache_omits_line():
+    # On a cache MISS the caller passes no_cache_latency=None; the no-cache line
+    # must be omitted (no identical-work number to compare against).
+    md = format_comparison("a", 1.0, False, 128, None, "b", 2.0, 576)
+    assert "no-cache" not in md
+    assert "**Proposed**" in md and "**Vanilla**" in md         # other lines still there
+    assert "2.0×" in md
+
+
+def test_format_comparison_hit_shows_cache_saved():
+    md = format_comparison("a", 1.0, True, 128, 3.5, "b", 4.0, 576)
+    assert "no-cache: 3.50s" in md
+    assert "cache saved 2.50s" in md                            # 3.5 - 1.0

@@ -88,7 +88,11 @@ def build_ui(engine):
             return chat, p_hist, v_hist, None, None
         try:
             res = engine.run_turn(image, question, p_hist, use_cache=use_cache)
-            no_cache = engine.compare_latency(image, question, p_hist)
+            # The no-cache contrast is only meaningful on a HIT (it reveals what
+            # the cache saved). On a miss it would re-do identical work, so skip
+            # it — that also makes the first turn one generation faster.
+            no_cache = (engine.compare_latency(image, question, p_hist)
+                        if res.cache_hit else None)
             v_answer, v_latency = engine.vanilla_generate(image, question, v_hist)
         except Exception as e:  # surface as a chat bubble; keep the 5-output arity
             chat = chat + [{"role": "user", "content": question},
