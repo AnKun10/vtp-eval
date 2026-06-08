@@ -10,11 +10,9 @@ from vtp_eval.demo.sections import OUT
 
 def build_pruning_tab(engine, selected_image, current_question):
     """Build the Pruning-viz tab. Returns reset_fn/reset_targets."""
-    from vtp_eval.insight.prune_viz.ui import resolve_knobs  # gradio-safe import
-
     with gr.Row():
-        budget = gr.Radio([32, 64, 128], value=64,
-                          label="Avg-token budget (R1:R2 = 3:1)")
+        retain = gr.Radio([32, 64, 128], value=128,
+                          label="Retain tokens (R2; R1 = 3×R2)")
         diversity = gr.Slider(0, 90, value=50, step=10,
                               label="Diversity % of R1 (rest = attention)")
         run = gr.Button("Run pruning viz", variant="primary")
@@ -23,7 +21,7 @@ def build_pruning_tab(engine, selected_image, current_question):
         exp2 = gr.Image(label="exp2: Original | Attention | Diversity", type="filepath")
         exp3 = gr.Image(label="exp3: Original | After R1 | After R2", type="filepath")
 
-    def run_fn(image, question, budget_v, diversity_v):
+    def run_fn(image, question, retain_v, diversity_v):
         if image is None:
             return "Pick a benchmark image first.", None, None
         import time
@@ -34,7 +32,12 @@ def build_pruning_tab(engine, selected_image, current_question):
         stamp = int(time.time() * 1000)          # unique names so gradio re-serves
         exp2_p, exp3_p = OUT / f"exp2_{stamp}.png", OUT / f"exp3_{stamp}.png"
         try:
-            R1, R2, dom, div = resolve_knobs(budget_v, diversity_v)
+            # Retain tokens = R2 (final visual tokens). R1 = 3*R2 (the 3:1 setting),
+            # split into dominant + diversity by the diversity %.
+            R2 = int(retain_v)
+            R1 = 3 * R2
+            div = max(0, min(int(round(R1 * float(diversity_v) / 100.0)), R1 - 1))
+            dom = R1 - div
             pv = engine.prune_viz_figures(image, q, R1, R2, dom, div)
             render.plot_prune_row(
                 image, [pv["attention"].cpu().numpy(), pv["diversity"].cpu().numpy()],
@@ -50,7 +53,7 @@ def build_pruning_tab(engine, selected_image, current_question):
               f"prune@layer 12 · query: _{q[:60]}_")
         return md, str(exp2_p), str(exp3_p)
 
-    run.click(run_fn, [selected_image, current_question, budget, diversity],
+    run.click(run_fn, [selected_image, current_question, retain, diversity],
               [info, exp2, exp3])
 
     def reset_fn():

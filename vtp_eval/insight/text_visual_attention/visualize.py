@@ -26,8 +26,10 @@ def overlay_from_vec(v576, sinks, target_size, grid: int, p_clip: float = 99.0):
 
 
 def plot_heatmap_grid(pwl, image, sinks, grid: int, lyrs, query: str,
-                      out_path: Path) -> None:
-    """Save a (#words x 3) figure: rows = target words, cols = shallow/mid/deep."""
+                      out_path: Path, title: str | None = None) -> None:
+    """Save a (#words x 3) figure: rows = target words, cols = shallow/mid/deep.
+
+    ``title`` overrides the figure suptitle (defaults to the Figure-3 caption)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -52,7 +54,7 @@ def plot_heatmap_grid(pwl, image, sinks, grid: int, lyrs, query: str,
                 ax.set_title(f"{d.capitalize()} (layer {lyrs[d]})", fontsize=13)
             if c == 0:
                 ax.set_ylabel(f"'{w}'", fontsize=13)
-    fig.suptitle(f'Figure 3 reproduction  -  query: "{query}"',
+    fig.suptitle(title or f'Figure 3 reproduction  -  query: "{query}"',
                  fontsize=14, y=1.02)
     plt.tight_layout()
     plt.savefig(out_path, dpi=140, bbox_inches="tight")

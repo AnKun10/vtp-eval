@@ -104,7 +104,7 @@ class Engine:
         r1_idx = entry["r1_idx"] if (entry and entry["r1_idx"] is not None) \
             else record.last_r1_idx()
 
-        overlay_r1 = overlay_pil(image, r1_idx)
+        overlay_r1 = overlay_pil(image, r1_idx) if r1_idx is not None else None
         overlay_r2 = None
         r2_local = record.last_r2_local()
         if r2_local is not None and r1_idx is not None:
@@ -154,6 +154,13 @@ class Engine:
             LlamaRotaryEmbedding.forward = patched["rotary"]
             self.model.prepare_inputs_labels_for_multimodal = patched["prepare"]
             self.cache.enabled = prev_enabled
+            # prune_viz.extract.r2_selection assigns vt.forward as an INSTANCE
+            # attribute and restores it to whatever the class forward was at its
+            # capture time — the ORIGINAL while we were in vanilla mode — which
+            # then shadows the patched class forward we just restored. Drop any
+            # such instance override so the patched class forward applies on the
+            # next proposed turn (otherwise the vision tower stops doing R1).
+            vars(self.model.get_model().get_vision_tower()).pop("forward", None)
 
     @torch.inference_mode()
     def vanilla_generate(self, image: Image.Image, question: str, history: list,

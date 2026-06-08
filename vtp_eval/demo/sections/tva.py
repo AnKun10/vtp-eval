@@ -20,10 +20,19 @@ def build_tva_tab(engine, selected_image, current_question):
         run = gr.Button("Run text-visual attention", variant="primary")
     status = gr.Markdown("")
     with gr.Row():
-        heatmap = gr.Image(label="Figure 3: per-word attention", type="filepath")
+        heatmap = gr.Image(label="Per-word text→vision attention", type="filepath")
         metrics_img = gr.Image(label="Concentration (entropy / top-5% mass)",
                                type="filepath")
     df = gr.Dataframe(label="metrics", interactive=False)
+    gr.Markdown(
+        "**Metric guide** — measured per (word, layer) over the 576 vision tokens; "
+        "they quantify how *focused* the word's attention is:\n"
+        "- **entropy** — spread of the attention distribution; **lower = more "
+        "concentrated** (uniform ≈ log 576 ≈ 6.36).\n"
+        "- **max_share** — fraction of attention on the single most-attended vision "
+        "token; **higher = more peaked**.\n"
+        "- **top5pct_mass** — total attention on the top-5% (≈29) vision tokens; "
+        "**higher = more focused**.")
 
     def run_fn(image, question, words_v, s, m, d):
         if image is None or not (question or "").strip():
@@ -39,8 +48,9 @@ def build_tva_tab(engine, selected_image, current_question):
         try:
             tva = engine.tva_attention(image, question, list(words_v),
                                        (int(s), int(m), int(d)))
-            visualize.plot_heatmap_grid(tva["pwl"], image, tva["sinks"],
-                                        tva["grid"], tva["lyrs"], question, str(heat_p))
+            visualize.plot_heatmap_grid(
+                tva["pwl"], image, tva["sinks"], tva["grid"], tva["lyrs"], question,
+                str(heat_p), title=f'Text–visual attention · query: "{question}"')
             mdf = metrics.compute_metrics(tva["pwl"], tva["sinks"], tva["lyrs"])
             visualize.plot_metrics_bar(mdf, tva["lyrs"], str(bar_p))
         except Exception as e:
