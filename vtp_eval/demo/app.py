@@ -17,8 +17,11 @@ def build_ui(engine):
     def respond(image, question, chat, history, use_cache):
         if image is None or not (question or "").strip():
             return chat, history, "Upload an image and type a question.", None, None
-        res = engine.run_turn(image, question, history, use_cache=use_cache)
-        compare = engine.compare_latency(image, question, history)
+        try:
+            res = engine.run_turn(image, question, history, use_cache=use_cache)
+            compare = engine.compare_latency(image, question, history)
+        except Exception as e:  # surface errors instead of a raw stack trace
+            return chat, history, f"**Error:** {type(e).__name__}: {e}", None, None
         history = history + [(question, res.answer)]
         chat = chat + [(question, res.answer)]
         s576, r1, r2 = res.tokens

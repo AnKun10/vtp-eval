@@ -10,6 +10,10 @@ Gradio multi-turn QA on one image with the proposed two-stage pruning method.
 3. Open the printed Gradio URL (use `--share` for a public link, or forward
    port 7860).
 
+> **Single-user demo.** The retain-token cache and the index recorders are
+> process-global state, so use one browser session at a time. The default
+> request queue serializes turns; do not raise concurrency.
+
 Config is fixed: R1=384 (div 50%, dominant_k=192 + diversity_m=192), R2=128 at
 LLM layer 12. Fallback if the Stage-2 decode path misbehaves: add `--no-stage2`
 (R1-only; the cache still works).
