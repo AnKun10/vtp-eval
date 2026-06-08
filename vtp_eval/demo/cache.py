@@ -52,3 +52,32 @@ class RetainTokenCache:
 
     def clear(self) -> None:
         self._store.clear()
+
+
+def install_cache(model, cache: RetainTokenCache) -> RetainTokenCache:
+    """Replace ``model.encode_images`` with a memoizing wrapper.
+
+    The vision tower is already patched by ``proposed_prune`` (Stage 1), so
+    encode_images returns the projected R1 retain tokens. On a hit we return the
+    cached tensor and skip the CLIP encoder + R1 selection; on a miss we call the
+    original and store. When ``cache.enabled`` is False we always recompute and
+    store nothing (used for the no-cache comparison timing).
+    """
+    orig = model.encode_images   # bound method, captured once
+
+    def wrapped(images):
+        if not cache.enabled:
+            cache.last_was_hit = False
+            return orig(images)
+        key = image_hash(images)
+        hit = cache.get(key)
+        if hit is not None:
+            cache.last_was_hit = True
+            return hit["feats"]
+        cache.last_was_hit = False
+        feats = orig(images)
+        cache.put(key, feats)
+        return feats
+
+    model.encode_images = wrapped
+    return cache
