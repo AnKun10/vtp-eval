@@ -187,10 +187,10 @@ def _build_ui(cfg: dict):
 
 
 def launch(host: str = "0.0.0.0", port: int = 7860,
-           config: Path | None = None) -> None:
+           config: Path | None = None, share: bool = False) -> None:
     cfg = _load_config(Path(config) if config else DEFAULT_CONFIG)
     demo = _build_ui(cfg)
-    demo.launch(server_name=host, server_port=port, share=False,
+    demo.launch(server_name=host, server_port=port, share=share,
                 allowed_paths=[str(DEFAULT_ROOT)])
 
 
@@ -199,8 +199,9 @@ def main():
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--port", type=int, default=7860)
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
+    p.add_argument("--share", action="store_true", help="Gradio public share link")
     args = p.parse_args()
-    launch(args.host, args.port, args.config)
+    launch(args.host, args.port, args.config, args.share)
 
 
 if __name__ == "__main__":
