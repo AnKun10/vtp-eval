@@ -19,14 +19,19 @@ LLM layer 12. Fallback if the Stage-2 decode path misbehaves: add `--no-stage2`
 (R1-only; the cache still works).
 
 ## Manual smoke checklist
-- [ ] Upload an image, ask Q1 → answer appears; metrics show `cache miss`,
+- [ ] Pick one or more benchmarks (pope/textvqa/mme/scienceqa/vizwiz/ocrbench),
+      set images/benchmark, click **Load** → a thumbnail gallery appears; status
+      shows how many images loaded (and any failed benchmarks).
+- [ ] Click a thumbnail → "Selected image" fills, the conversation resets, and
+      the benchmark questions for that image are listed below the chat.
+- [ ] Click one of the listed questions → it drops into the input box; or type
+      your own. Press **Send** → answer appears; metrics show `cache miss`,
       tokens `576 → 384 → 128`, and a latency value.
-- [ ] Ask Q2 about the same image → metrics show `CACHE HIT` and a latency
-      lower than the `No-cache (same turn)` figure beside it.
-- [ ] R1 overlay (384) is identical across Q1/Q2; R2 overlay (128) changes
-      with the question (query-aware).
-- [ ] Uncheck "Enable retain-token cache", ask Q3 → `cache miss` again.
-- [ ] Upload a different image → conversation resets; first question is a miss.
+- [ ] Ask a second question about the same image → metrics show `CACHE HIT` with
+      a latency below the `No-cache (same turn)` figure.
+- [ ] R1 overlay (384) is identical across turns on one image; R2 overlay (128)
+      changes with the question (query-aware).
+- [ ] Click a different thumbnail → conversation resets; first question is a miss.
 
 ## Automated slow test
 `pytest -m slow tests/test_demo_engine_smoke.py -v`  (Vast.ai only)
