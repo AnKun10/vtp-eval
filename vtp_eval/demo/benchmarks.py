@@ -55,3 +55,31 @@ def group_rows(rows, image_key, q_key, n_images, max_scan):
         if len(out) >= n_images:
             break
     return out
+
+
+def save_groups(groups, dataset: str, out_dir) -> list:
+    """Write one image per group to `out_dir`; return flat records
+    [{"dataset", "image_path", "questions"}] in group order."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    flat = []
+    for i, g in enumerate(groups):
+        p = out_dir / f"{dataset}_{i}.jpg"
+        g["image"].save(p)
+        flat.append({"dataset": dataset, "image_path": str(p),
+                     "questions": list(g["questions"])})
+    return flat
+
+
+def fetch_grouped(spec, out_dir, n_images: int, max_scan: int | None = None) -> list:
+    """Stream `spec.hf`, group rows by image, save images, return flat records.
+
+    `spec` is a prune_viz DatasetSpec (uses .hf/.config/.split/.image_key/.q_key/
+    .name). `max_scan` defaults to min(n_images*30, 400) to keep streaming cheap.
+    Heavy `datasets` import deferred. Vast.ai only (HF streaming)."""
+    from datasets import load_dataset
+    if max_scan is None:
+        max_scan = min(int(n_images) * 30, 400)
+    ds = load_dataset(spec.hf, name=spec.config, split=spec.split, streaming=True)
+    groups = group_rows(ds, spec.image_key, spec.q_key, int(n_images), max_scan)
+    return save_groups(groups, spec.name, out_dir)

@@ -40,3 +40,22 @@ def test_group_rows_skips_empty_questions():
     groups = group_rows(rows, "image", "question", n_images=5, max_scan=10)
     assert len(groups) == 1
     assert groups[0]["questions"] == ["q2"]        # empty string not appended
+
+
+from pathlib import Path
+from vtp_eval.demo.benchmarks import save_groups
+
+
+def test_save_groups_writes_images_and_flat_records(tmp_path):
+    groups = [
+        {"image": _img((1, 2, 3)), "questions": ["a", "b"]},
+        {"image": _img((4, 5, 6)), "questions": []},
+    ]
+    flat = save_groups(groups, "pope", tmp_path)
+    assert len(flat) == 2
+    assert flat[0]["dataset"] == "pope"
+    assert flat[0]["questions"] == ["a", "b"]
+    assert flat[0]["image_path"].endswith("pope_0.jpg")
+    assert Path(flat[0]["image_path"]).exists()
+    assert flat[1]["image_path"].endswith("pope_1.jpg")
+    assert Path(flat[1]["image_path"]).exists()
