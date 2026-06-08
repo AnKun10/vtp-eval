@@ -49,7 +49,7 @@ def build_ui(engine):
                     ov_r1 = gr.Image(label="Kept after R1 (384)")
                     ov_r2 = gr.Image(label="Kept after R2 (128)")
             with gr.Column(scale=1):
-                chat = gr.Chatbot(label="Conversation", height=380)
+                chat = gr.Chatbot(label="Conversation", height=380, type="tuples")
                 question = gr.Textbox(label="Question", placeholder="Ask about the image…")
                 send = gr.Button("Send", variant="primary")
                 metrics = gr.Markdown("")
@@ -72,8 +72,9 @@ def main():
     args = p.parse_args()
 
     engine = load_engine(model_path=args.model, stage2_enabled=not args.no_stage2)
-    build_ui(engine).launch(server_name="0.0.0.0", server_port=args.port,
-                            share=args.share)
+    ui = build_ui(engine)
+    ui.queue()
+    ui.launch(server_name="0.0.0.0", server_port=args.port, share=args.share)
 
 
 if __name__ == "__main__":
