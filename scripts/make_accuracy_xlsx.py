@@ -52,6 +52,13 @@ SECTIONS = [
                     ("proposed", "proposed_retain128")]),
 ]
 
+# R1-stage diversity ablation (proposed method, fixed avg-64 budget): rows are
+# the diversity ratio % (rest of R1 = attention/dominant). Cells = ABSOLUTE
+# accuracy as a percentage (matches the requested frame).
+DIVERSITY = [(10, "proposed_div10_avg64"), (20, "proposed_div20_avg64"),
+             (30, "proposed_div30_avg64"), (40, "proposed_div40_avg64"),
+             (50, "proposed_div50_avg64")]
+
 N_COLS = 1 + len(BENCH) + 1                       # method + benchmarks + avg
 PCT2, PCT1 = "0.00%", "0.0%"
 HDR_FILL = PatternFill("solid", fgColor="DDEBF7")
@@ -74,6 +81,43 @@ def fracs(data, method_key):
     """0-1 fraction per benchmark (MME normalised by its 2800 max)."""
     return {col: data[(method_key, task, metric)] / mx
             for col, task, metric, mx in BENCH}
+
+
+def build_diversity_sheet(wb, data):
+    """Second sheet: proposed R1-prune diversity ablation. Rows = diversity ratio
+    %, cells = ABSOLUTE accuracy as a percentage (MME normalised by 2800)."""
+    ws = wb.create_sheet("R1-prune (diversity)")
+    ncol = 1 + len(BENCH)
+    ws.append(["diversity ratio (%)"] + [b[0] for b in BENCH])
+    for c in range(1, ncol + 1):
+        cell = ws.cell(1, c)
+        cell.font = Font(bold=True)
+        cell.fill = HDR_FILL
+        cell.alignment = CENTER
+        cell.border = BORDER
+
+    rows_fr = {pct: fracs(data, mk) for pct, mk in DIVERSITY}
+    best = {col: max(rows_fr, key=lambda p: rows_fr[p][col]) for col, *_ in BENCH}
+    for pct, _ in DIVERSITY:
+        fr = rows_fr[pct]
+        ws.append([pct] + [fr[c] for c, *_ in BENCH])
+        row = ws.max_row
+        for c in range(1, ncol + 1):
+            cell = ws.cell(row, c)
+            cell.border = BORDER
+            cell.alignment = CENTER
+            if c == 1:
+                cell.number_format = "0"
+            else:
+                col = BENCH[c - 2][0]
+                cell.number_format = "0.00%"
+                cell.font = Font(bold=best[col] == pct)
+
+    ws.column_dimensions["A"].width = 18
+    for c in range(2, ncol + 1):
+        ws.column_dimensions[get_column_letter(c)].width = 13
+    ws.freeze_panes = "B2"
+    return ws
 
 
 def main():
@@ -145,9 +189,11 @@ def main():
         ws.column_dimensions[get_column_letter(c)].width = 13
     ws.freeze_panes = "B2"
 
+    build_diversity_sheet(wb, data)
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
     wb.save(OUT)
-    print(f"wrote {OUT}  ({ws.max_row} rows)")
+    print(f"wrote {OUT}  (sheets: {wb.sheetnames})")
 
 
 if __name__ == "__main__":
