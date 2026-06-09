@@ -83,6 +83,107 @@ def fracs(data, method_key):
             for col, task, metric, mx in BENCH}
 
 
+def load_timing() -> dict:
+    """(method, task) -> (encoder_ms, prefill_ms, decode_ms, total_ms)."""
+    t = {}
+    with open(CSV, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            try:
+                t[(r["method"], r["task"])] = (
+                    float(r["encoder_ms"]), float(r["prefill_ms"]),
+                    float(r["decode_ms"]), float(r["total_ms"]))
+            except (ValueError, KeyError):
+                continue
+    return t
+
+
+def build_latency_sheet(wb, timing):
+    """Per-stage latency SPEEDUP vs baseline (baseline = 1.00x; higher = faster).
+    Two-level header: each benchmark has encode/prefill/decode; a final ``avg`` is
+    the mean end-to-end speedup (baseline total / method total) across benchmarks.
+    sparsevlm is omitted (its native harness recorded no per-stage timing)."""
+    ws = wb.create_sheet("Latency (speedup)")
+    SP = '0.00"x"'
+    base = {col: timing[(BASELINE[1], task)] for col, task, *_ in BENCH}
+    ncol = 1 + len(BENCH) * 3 + 1
+
+    # two-level header — style every cell BEFORE merging (merged non-anchors are
+    # read-only afterwards), set values on the anchors, then merge.
+    for rr in (1, 2):
+        for cc in range(1, ncol + 1):
+            cell = ws.cell(rr, cc)
+            cell.font = Font(bold=True)
+            cell.fill = HDR_FILL
+            cell.alignment = CENTER
+            cell.border = BORDER
+    ws.cell(1, 1, "method")
+    c = 2
+    for bcol, *_ in BENCH:
+        ws.cell(1, c, bcol)
+        ws.cell(2, c, "encode")
+        ws.cell(2, c + 1, "prefill")
+        ws.cell(2, c + 2, "decode")
+        c += 3
+    ws.cell(1, c, "avg")
+    ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=1)
+    c = 2
+    for _ in BENCH:
+        ws.merge_cells(start_row=1, start_column=c, end_row=1, end_column=c + 2)
+        c += 3
+    ws.merge_cells(start_row=1, start_column=c, end_row=2, end_column=c)
+
+    def speedups(method_key):
+        cells = []
+        for bcol, task, *_ in BENCH:
+            bt, mt = base[bcol], timing[(method_key, task)]
+            cells += [bt[0] / mt[0], bt[1] / mt[1], bt[2] / mt[2]]
+        avg = sum(base[bc][3] / timing[(method_key, tk)][3]
+                  for bc, tk, *_ in BENCH) / len(BENCH)
+        return cells, avg
+
+    def write_row(display, method_key, *, baseline=False, best=None):
+        cells, avg = speedups(method_key)
+        ws.append([display] + cells + [avg])
+        row = ws.max_row
+        for cc in range(1, ncol + 1):
+            cell = ws.cell(row, cc)
+            cell.border = BORDER
+            if cc == 1:
+                cell.font = Font(bold=baseline or display == "proposed")
+            else:
+                cell.alignment = CENTER
+                cell.number_format = SP
+                is_best = best is not None and best.get(cc - 2) == method_key
+                cell.font = Font(bold=baseline or is_best)
+            if baseline:
+                cell.fill = BASE_FILL
+
+    write_row(*BASELINE, baseline=True)
+
+    ncells = len(BENCH) * 3
+    for title, methods in SECTIONS:
+        methods = [(d, m) for d, m in methods if not m.startswith("sparsevlm")]
+        ws.append([title] + [""] * (ncol - 1))
+        srow = ws.max_row
+        for cc in range(1, ncol + 1):
+            ws.cell(srow, cc).border = BORDER
+            ws.cell(srow, cc).fill = SEC_FILL
+        ws.cell(srow, 1).font = Font(bold=True)
+        ws.cell(srow, 1).alignment = CENTER
+        ws.merge_cells(start_row=srow, start_column=1, end_row=srow, end_column=ncol)
+        sec = {m: speedups(m) for _, m in methods}
+        best = {idx: max(sec, key=lambda m: sec[m][0][idx]) for idx in range(ncells)}
+        best[ncells] = max(sec, key=lambda m: sec[m][1])      # avg column
+        for display, m in methods:
+            write_row(display, m, best=best)
+
+    ws.column_dimensions["A"].width = 16
+    for cc in range(2, ncol + 1):
+        ws.column_dimensions[get_column_letter(cc)].width = 8
+    ws.freeze_panes = "B3"
+    return ws
+
+
 def build_diversity_sheet(wb, data):
     """Second sheet: proposed R1-prune diversity ablation. Rows = diversity ratio
     %, cells = ABSOLUTE accuracy as a percentage (MME normalised by 2800)."""
@@ -190,6 +291,7 @@ def main():
     ws.freeze_panes = "B2"
 
     build_diversity_sheet(wb, data)
+    build_latency_sheet(wb, load_timing())
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     wb.save(OUT)
