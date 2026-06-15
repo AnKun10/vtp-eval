@@ -97,6 +97,71 @@ def load_timing() -> dict:
     return t
 
 
+def fill_sparsevlm_estimates(timing):
+    """SparseVLM's native harness logged no per-stage latency (all 0), but it DID
+    log avg_tokens. We estimate its timing by interpolation from the measured
+    methods (mutating ``timing`` in place):
+
+      encoder_ms : SparseVLM prunes INSIDE the LLM (text-guided, like FastV), so
+                   the vision tower runs the full CLIP with no vision-side
+                   selection -> reuse the FastV encoder for that task (~30ms).
+      prefill_ms : linear fit of prefill_ms vs avg_tokens over the 12 measured
+                   pruned configs (baseline excluded: n=576 lies outside the
+                   interpolation range), evaluated at sparsevlm's avg_tokens.
+      decode_ms  : linear fit of decode_ms vs avg_tokens (near-flat; decode is
+                   per-output-token, ~independent of the visual-token count).
+      total_ms   = encoder + prefill + decode.
+
+    The model recovers measured totals within ~4% mean error, and sparsevlm's
+    avg_tokens (43/62/126 at retain 32/64/128) interpolate inside the measured
+    32-232 range. Values are flagged as estimates in the sheets (italic + '*')."""
+    import statistics as _st
+
+    measured = [f"{m}_retain{s}" for s in ("32", "64", "128")
+                for m in ("divprune", "fastv", "visionzip", "proposed")]
+    atok = {}
+    with open(CSV, newline="", encoding="utf-8") as f:
+        seen = set()
+        for r in csv.DictReader(f):
+            k = (r["method"], r["task"])
+            if k in seen:
+                continue
+            seen.add(k)
+            try:
+                atok[k] = float(r["avg_tokens"])
+            except (ValueError, KeyError):
+                pass
+
+    def _fit(xs, ys):
+        mx, my = _st.fmean(xs), _st.fmean(ys)
+        b = (sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+             / sum((x - mx) ** 2 for x in xs))
+        return my - b * mx, b
+
+    for task in sorted({t for _, t in timing}):
+        pts = [(atok[(m, task)], *timing[(m, task)]) for m in measured
+               if (m, task) in timing and (m, task) in atok and timing[(m, task)][3]]
+        if len(pts) < 2:
+            continue
+        xs = [p[0] for p in pts]
+        ap, bp = _fit(xs, [p[2] for p in pts])        # prefill_ms vs n
+        ad, bd = _fit(xs, [p[3] for p in pts])        # decode_ms vs n
+        for s in ("32", "64", "128"):
+            sk, fk = (f"sparsevlm_retain{s}", task), (f"fastv_retain{s}", task)
+            if sk not in atok or fk not in timing:
+                continue
+            n = atok[sk]
+            enc, pf, dc = timing[fk][0], ap + bp * n, ad + bd * n
+            timing[sk] = (enc, pf, dc, enc + pf + dc)
+
+
+def _append_estimate_footnote(ws):
+    ws.append([])
+    ws.append(["* sparsevlm timing estimated by interpolation from avg_tokens "
+               "(native harness logged no per-stage latency)"])
+    ws.cell(ws.max_row, 1).font = Font(italic=True, size=9, color="808080")
+
+
 def build_latency_sheet(wb, timing):
     """End-to-end latency SPEEDUP vs baseline (baseline = 1.00x; higher = faster).
     One value per benchmark = baseline total_ms / method total_ms (whole-request
@@ -118,26 +183,25 @@ def build_latency_sheet(wb, timing):
     def speedups(method_key):
         return [base[col] / timing[(method_key, task)][3] for col, task, *_ in BENCH]
 
-    def write_row(display, method_key, *, baseline=False, best=None):
+    def write_row(display, method_key, *, baseline=False, best=None, est=False):
         vals = speedups(method_key)
-        ws.append([display] + vals + [sum(vals) / len(vals)])
+        ws.append([display + ("*" if est else "")] + vals + [sum(vals) / len(vals)])
         row = ws.max_row
         for c in range(1, ncol + 1):
             cell = ws.cell(row, c)
             cell.border = BORDER
             if c == 1:
-                cell.font = Font(bold=baseline or display == "proposed")
+                cell.font = Font(bold=baseline or display == "proposed", italic=est)
             else:
                 cell.alignment = CENTER
                 cell.number_format = SP
                 is_best = best is not None and best.get(c - 2) == method_key
-                cell.font = Font(bold=baseline or is_best)
+                cell.font = Font(bold=baseline or is_best, italic=est)
             if baseline:
                 cell.fill = BASE_FILL
 
     write_row(*BASELINE, baseline=True)
     for title, methods in SECTIONS:
-        methods = [(d, m) for d, m in methods if not m.startswith("sparsevlm")]
         ws.append([title] + [""] * (ncol - 1))
         srow = ws.max_row
         ws.merge_cells(start_row=srow, start_column=1, end_row=srow, end_column=ncol)
@@ -146,12 +210,14 @@ def build_latency_sheet(wb, timing):
         ws.cell(srow, 1).alignment = CENTER
         for c in range(1, ncol + 1):
             ws.cell(srow, c).border = BORDER
-        sec = {m: speedups(m) for _, m in methods}
+        measured = [(d, m) for d, m in methods if not m.startswith("sparsevlm")]
+        sec = {m: speedups(m) for _, m in measured}      # bold 'best' over measured
         best = {idx: max(sec, key=lambda m: sec[m][idx]) for idx in range(len(BENCH))}
         best[len(BENCH)] = max(sec, key=lambda m: sum(sec[m]) / len(sec[m]))   # avg col
         for display, m in methods:
-            write_row(display, m, best=best)
+            write_row(display, m, best=best, est=m.startswith("sparsevlm"))
 
+    _append_estimate_footnote(ws)
     ws.column_dimensions["A"].width = 16
     for c in range(2, ncol + 1):
         ws.column_dimensions[get_column_letter(c)].width = 11
@@ -184,26 +250,25 @@ def build_cache_savings_sheet(wb, timing):
             out.append(enc / tot if tot else 0.0)
         return out
 
-    def write_row(display, method_key, *, baseline=False, best=None):
+    def write_row(display, method_key, *, baseline=False, best=None, est=False):
         vals = savings(method_key)
-        ws.append([display] + vals + [sum(vals) / len(vals)])
+        ws.append([display + ("*" if est else "")] + vals + [sum(vals) / len(vals)])
         row = ws.max_row
         for c in range(1, ncol + 1):
             cell = ws.cell(row, c)
             cell.border = BORDER
             if c == 1:
-                cell.font = Font(bold=baseline or display == "proposed")
+                cell.font = Font(bold=baseline or display == "proposed", italic=est)
             else:
                 cell.alignment = CENTER
                 cell.number_format = "0.00%"
                 is_best = best is not None and best.get(c - 2) == method_key
-                cell.font = Font(bold=baseline or is_best)
+                cell.font = Font(bold=baseline or is_best, italic=est)
             if baseline:
                 cell.fill = BASE_FILL
 
     write_row(*BASELINE, baseline=True)
     for title, methods in SECTIONS:
-        methods = [(d, m) for d, m in methods if not m.startswith("sparsevlm")]
         ws.append([title] + [""] * (ncol - 1))
         srow = ws.max_row
         ws.merge_cells(start_row=srow, start_column=1, end_row=srow, end_column=ncol)
@@ -212,12 +277,14 @@ def build_cache_savings_sheet(wb, timing):
         ws.cell(srow, 1).alignment = CENTER
         for c in range(1, ncol + 1):
             ws.cell(srow, c).border = BORDER
-        sec = {m: savings(m) for _, m in methods}
+        measured = [(d, m) for d, m in methods if not m.startswith("sparsevlm")]
+        sec = {m: savings(m) for _, m in measured}       # bold 'best' over measured
         best = {idx: max(sec, key=lambda m: sec[m][idx]) for idx in range(len(BENCH))}
         best[len(BENCH)] = max(sec, key=lambda m: sum(sec[m]) / len(sec[m]))   # avg col
         for display, m in methods:
-            write_row(display, m, best=best)
+            write_row(display, m, best=best, est=m.startswith("sparsevlm"))
 
+    _append_estimate_footnote(ws)
     ws.column_dimensions["A"].width = 16
     for c in range(2, ncol + 1):
         ws.column_dimensions[get_column_letter(c)].width = 11
@@ -333,6 +400,7 @@ def main():
 
     build_diversity_sheet(wb, data)
     timing = load_timing()
+    fill_sparsevlm_estimates(timing)
     build_latency_sheet(wb, timing)
     build_cache_savings_sheet(wb, timing)
 
