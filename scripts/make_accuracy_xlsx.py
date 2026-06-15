@@ -184,6 +184,72 @@ def build_latency_sheet(wb, timing):
     return ws
 
 
+def build_cache_savings_sheet(wb, timing):
+    """KV retain-token cache SAVINGS: the share of per-turn latency that a cache
+    HIT eliminates by skipping the vision encode. Treating each method's own
+    total_ms as 100%, the saved time is its encoder_ms, so a cell reads
+    ``encoder_ms / total_ms`` = the % of latency removed on a cached (turn 2+)
+    request for the same image. Baseline included; sparsevlm omitted (no
+    per-stage timing). avg = mean of the per-benchmark savings."""
+    ws = wb.create_sheet("KV-cache (savings)")
+    ncol = 1 + len(BENCH) + 1
+
+    ws.append(["method"] + [b[0] for b in BENCH] + ["avg (%)"])
+    for c in range(1, ncol + 1):
+        cell = ws.cell(1, c)
+        cell.font = Font(bold=True)
+        cell.fill = HDR_FILL
+        cell.alignment = CENTER
+        cell.border = BORDER
+
+    def savings(method_key):
+        out = []
+        for _, task, *_ in BENCH:
+            enc, _pf, _dc, tot = timing[(method_key, task)]
+            out.append(enc / tot if tot else 0.0)
+        return out
+
+    def write_row(display, method_key, *, baseline=False, best=None):
+        vals = savings(method_key)
+        ws.append([display] + vals + [sum(vals) / len(vals)])
+        row = ws.max_row
+        for c in range(1, ncol + 1):
+            cell = ws.cell(row, c)
+            cell.border = BORDER
+            if c == 1:
+                cell.font = Font(bold=baseline or display == "proposed")
+            else:
+                cell.alignment = CENTER
+                cell.number_format = "0.00%"
+                is_best = best is not None and best.get(c - 2) == method_key
+                cell.font = Font(bold=baseline or is_best)
+            if baseline:
+                cell.fill = BASE_FILL
+
+    write_row(*BASELINE, baseline=True)
+    for title, methods in SECTIONS:
+        methods = [(d, m) for d, m in methods if not m.startswith("sparsevlm")]
+        ws.append([title] + [""] * (ncol - 1))
+        srow = ws.max_row
+        ws.merge_cells(start_row=srow, start_column=1, end_row=srow, end_column=ncol)
+        ws.cell(srow, 1).font = Font(bold=True)
+        ws.cell(srow, 1).fill = SEC_FILL
+        ws.cell(srow, 1).alignment = CENTER
+        for c in range(1, ncol + 1):
+            ws.cell(srow, c).border = BORDER
+        sec = {m: savings(m) for _, m in methods}
+        best = {idx: max(sec, key=lambda m: sec[m][idx]) for idx in range(len(BENCH))}
+        best[len(BENCH)] = max(sec, key=lambda m: sum(sec[m]) / len(sec[m]))   # avg col
+        for display, m in methods:
+            write_row(display, m, best=best)
+
+    ws.column_dimensions["A"].width = 16
+    for c in range(2, ncol + 1):
+        ws.column_dimensions[get_column_letter(c)].width = 11
+    ws.freeze_panes = "B2"
+    return ws
+
+
 def build_diversity_sheet(wb, data):
     """Second sheet: proposed R1-prune diversity ablation. Rows = diversity ratio
     %, cells = ABSOLUTE accuracy as a percentage (MME normalised by 2800)."""
@@ -291,7 +357,9 @@ def main():
     ws.freeze_panes = "B2"
 
     build_diversity_sheet(wb, data)
-    build_latency_sheet(wb, load_timing())
+    timing = load_timing()
+    build_latency_sheet(wb, timing)
+    build_cache_savings_sheet(wb, timing)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     wb.save(OUT)
