@@ -97,31 +97,24 @@ def load_timing() -> dict:
     return t
 
 
-def fill_sparsevlm_estimates(timing):
-    """SparseVLM's native harness logged no per-stage latency (all 0), but it DID
-    log avg_tokens. We estimate its timing by interpolation from the measured
-    methods (mutating ``timing`` in place):
+# Estimated proposed variant: stage-1 budget R1 = 1.5*R2 with the stage-2 prune
+# at LLM layer K=8 (vs the measured proposed's R1 = 3*R2, K=12). Latency depends
+# only on the visual-token count per layer, so avg_tokens fully determines it:
+#   avg_tokens = ((K+1)*R1 + (L-K-1)*R2) / L     (L = 32 LLM layers)
+# verified exactly against the measured proposed configs (58/116/232). Added only
+# to the timing-based sheets (no accuracy run for this hypothetical config).
+VARIANT_DISPLAY = "proposed (1.5R2,K8)"
+PROPOSED_VARIANT = [                       # (section_title, R2, method_key)
+    ("Retain 32", 32, "proposed_r1x1.5_k8_retain32"),
+    ("Retain 64", 64, "proposed_r1x1.5_k8_retain64"),
+    ("Retain 128", 128, "proposed_r1x1.5_k8_retain128"),
+]
 
-      encoder_ms : SparseVLM prunes INSIDE the LLM (text-guided, like FastV), so
-                   the vision tower runs the full CLIP with no vision-side
-                   selection -> reuse the FastV encoder for that task (~30ms).
-      prefill_ms : linear fit of prefill_ms vs avg_tokens over the 12 measured
-                   pruned configs (baseline excluded: n=576 lies outside the
-                   interpolation range), evaluated at sparsevlm's avg_tokens.
-      decode_ms  : linear fit of decode_ms vs avg_tokens (near-flat; decode is
-                   per-output-token, ~independent of the visual-token count).
-      total_ms   = encoder + prefill + decode.
 
-    The model recovers measured totals within ~4% mean error, and sparsevlm's
-    avg_tokens (43/62/126 at retain 32/64/128) interpolate inside the measured
-    32-232 range. Values are flagged as estimates in the sheets (italic + '*')."""
-    import statistics as _st
-
-    measured = [f"{m}_retain{s}" for s in ("32", "64", "128")
-                for m in ("divprune", "fastv", "visionzip", "proposed")]
-    atok = {}
+def _load_avg_tokens() -> dict:
+    """{(method, task): avg_tokens} from the CSV (first row per pair)."""
+    atok, seen = {}, set()
     with open(CSV, newline="", encoding="utf-8") as f:
-        seen = set()
         for r in csv.DictReader(f):
             k = (r["method"], r["task"])
             if k in seen:
@@ -131,6 +124,18 @@ def fill_sparsevlm_estimates(timing):
                 atok[k] = float(r["avg_tokens"])
             except (ValueError, KeyError):
                 pass
+    return atok
+
+
+def _token_timing_models(timing, atok) -> dict:
+    """Per-task linear models (prefill~n, decode~n) fit over the 12 MEASURED pruned
+    configs. Baseline is excluded (n=576 lies outside the interpolation range);
+    decode is near-flat (per-output-token, ~independent of the visual-token count).
+    Returns {task: (a_pf, b_pf, a_dc, b_dc)}. Recovers measured totals within ~4%
+    mean error."""
+    import statistics as _st
+    measured = [f"{m}_retain{s}" for s in ("32", "64", "128")
+                for m in ("divprune", "fastv", "visionzip", "proposed")]
 
     def _fit(xs, ys):
         mx, my = _st.fmean(xs), _st.fmean(ys)
@@ -138,27 +143,65 @@ def fill_sparsevlm_estimates(timing):
              / sum((x - mx) ** 2 for x in xs))
         return my - b * mx, b
 
+    models = {}
     for task in sorted({t for _, t in timing}):
         pts = [(atok[(m, task)], *timing[(m, task)]) for m in measured
                if (m, task) in timing and (m, task) in atok and timing[(m, task)][3]]
         if len(pts) < 2:
             continue
         xs = [p[0] for p in pts]
-        ap, bp = _fit(xs, [p[2] for p in pts])        # prefill_ms vs n
-        ad, bd = _fit(xs, [p[3] for p in pts])        # decode_ms vs n
-        for s in ("32", "64", "128"):
+        models[task] = (*_fit(xs, [p[2] for p in pts]),     # prefill_ms vs n
+                        *_fit(xs, [p[3] for p in pts]))      # decode_ms vs n
+    return models
+
+
+def _estimate(n, enc, model):
+    """(encoder, prefill, decode, total) at avg_tokens=n given a fixed encoder."""
+    ap, bp, ad, bd = model
+    pf, dc = ap + bp * n, ad + bd * n
+    return (enc, pf, dc, enc + pf + dc)
+
+
+def fill_sparsevlm_estimates(timing):
+    """SparseVLM's native harness logged no per-stage latency (all 0) but DID log
+    avg_tokens (43/62/126 at retain 32/64/128 — inside the measured 32-232 range).
+    Estimate its timing (mutating ``timing`` in place):
+      encoder_ms : SparseVLM prunes INSIDE the LLM (text-guided, like FastV), so
+                   the vision tower runs the full CLIP with no vision-side
+                   selection -> reuse the FastV encoder for that task (~30ms).
+      prefill/decode : the shared token-timing models at sparsevlm's avg_tokens.
+    Flagged as estimates in the sheets (italic + '*')."""
+    atok = _load_avg_tokens()
+    models = _token_timing_models(timing, atok)
+    for s in ("32", "64", "128"):
+        for task, model in models.items():
             sk, fk = (f"sparsevlm_retain{s}", task), (f"fastv_retain{s}", task)
-            if sk not in atok or fk not in timing:
-                continue
-            n = atok[sk]
-            enc, pf, dc = timing[fk][0], ap + bp * n, ad + bd * n
-            timing[sk] = (enc, pf, dc, enc + pf + dc)
+            if sk in atok and fk in timing:
+                timing[sk] = _estimate(atok[sk], timing[fk][0], model)
+
+
+def fill_proposed_variant_estimates(timing):
+    """Hypothetical proposed config R1 = 1.5*R2, stage-2 prune layer K=8 (never
+    benchmarked). avg_tokens is computed from the layer formula; the encoder reuses
+    the measured proposed encoder (same stage-1 dominant+diversity selection at the
+    vision penultimate, so the same ~36ms vision-side overhead); prefill/decode come
+    from the shared token-timing models. Flagged as estimates (italic + '*')."""
+    atok = _load_avg_tokens()
+    models = _token_timing_models(timing, atok)
+    L, K = 32, 8
+    for _title, R2, key in PROPOSED_VARIANT:
+        n = ((K + 1) * 1.5 * R2 + (L - K - 1) * R2) / L
+        for task, model in models.items():
+            esrc = (f"proposed_retain{R2}", task)
+            if esrc in timing:
+                timing[(key, task)] = _estimate(n, timing[esrc][0], model)
 
 
 def _append_estimate_footnote(ws):
     ws.append([])
-    ws.append(["* sparsevlm timing estimated by interpolation from avg_tokens "
-               "(native harness logged no per-stage latency)"])
+    ws.append(["* estimated by interpolating prefill/decode vs avg_tokens from the "
+               "measured configs — sparsevlm (native harness logged no latency) and "
+               "proposed (1.5R2,K8) (a hypothetical config, not benchmarked)."])
     ws.cell(ws.max_row, 1).font = Font(italic=True, size=9, color="808080")
 
 
@@ -216,9 +259,12 @@ def build_latency_sheet(wb, timing):
         best[len(BENCH)] = max(sec, key=lambda m: sum(sec[m]) / len(sec[m]))   # avg col
         for display, m in methods:
             write_row(display, m, best=best, est=m.startswith("sparsevlm"))
+        for vt, _r2, vkey in PROPOSED_VARIANT:
+            if vt == title and (vkey, BENCH[0][1]) in timing:
+                write_row(VARIANT_DISPLAY, vkey, best=best, est=True)
 
     _append_estimate_footnote(ws)
-    ws.column_dimensions["A"].width = 16
+    ws.column_dimensions["A"].width = 20
     for c in range(2, ncol + 1):
         ws.column_dimensions[get_column_letter(c)].width = 11
     ws.freeze_panes = "B2"
@@ -283,9 +329,12 @@ def build_cache_savings_sheet(wb, timing):
         best[len(BENCH)] = max(sec, key=lambda m: sum(sec[m]) / len(sec[m]))   # avg col
         for display, m in methods:
             write_row(display, m, best=best, est=m.startswith("sparsevlm"))
+        for vt, _r2, vkey in PROPOSED_VARIANT:
+            if vt == title and (vkey, BENCH[0][1]) in timing:
+                write_row(VARIANT_DISPLAY, vkey, best=best, est=True)
 
     _append_estimate_footnote(ws)
-    ws.column_dimensions["A"].width = 16
+    ws.column_dimensions["A"].width = 20
     for c in range(2, ncol + 1):
         ws.column_dimensions[get_column_letter(c)].width = 11
     ws.freeze_panes = "B2"
@@ -401,6 +450,7 @@ def main():
     build_diversity_sheet(wb, data)
     timing = load_timing()
     fill_sparsevlm_estimates(timing)
+    fill_proposed_variant_estimates(timing)
     build_latency_sheet(wb, timing)
     build_cache_savings_sheet(wb, timing)
 
